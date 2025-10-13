@@ -75,7 +75,7 @@ def orders_summary():
         for purchase in purchases:
             if purchase.price_total is not None:
                 total_cost += float(purchase.price_total or 0.0)
-            else:
+                else:
                 # Si no hay price_total, calcular desde price_per_unit × cantidad en charged_unit
                 unit = purchase.charged_unit or "kg"
                 qty = float(purchase.qty_kg or 0.0) if unit == "kg" else float(purchase.qty_unit or 0.0)
@@ -175,6 +175,27 @@ def orders_summary():
     return jsonify(result)
 
 
+@accounting_bp.patch("/charges/<int:charge_id>/price")
+def update_charge_price(charge_id):
+    """Actualizar el precio unitario de un cargo"""
+    from ..models.charge import Charge
+    from ..db import db
+    
+    charge = Charge.query.get_or_404(charge_id)
+    data = request.get_json() or {}
+    new_price = data.get('unit_price')
+    
+    if new_price is None:
+        return jsonify({"error": "unit_price requerido"}), 400
+    
+    charge.unit_price = float(new_price)
+    qty_to_charge = charge.charged_qty if charge.charged_qty is not None else float(charge.qty or 0.0)
+    charge.total = qty_to_charge * float(charge.unit_price or 0.0)
+    db.session.commit()
+    
+    return jsonify(charge.to_dict())
+
+
 @accounting_bp.get("/accounting/customers")
 def customers_summary():
     """
@@ -208,10 +229,29 @@ def customers_summary():
         if include_orders:
             orders = {}
             for ch in charges:
-                o = orders.setdefault(ch.order_id or 0, {"order_id": ch.order_id, "billed": 0.0, "paid": 0.0})
+                o = orders.setdefault(ch.order_id or 0, {
+                    "order_id": ch.order_id, 
+                    "billed": 0.0, 
+                    "paid": 0.0,
+                    "products": []
+                })
                 # Usar charged_qty para el cálculo por pedido también
                 qty_to_charge = ch.charged_qty if ch.charged_qty is not None else float(ch.qty or 0.0)
                 o["billed"] += max(0.0, (qty_to_charge * float(ch.unit_price or 0.0)) - (ch.discount_amount or 0.0))
+                
+                # Agregar detalle del producto
+                from ..models.product import Product
+                product = Product.query.get(ch.product_id) if ch.product_id else None
+                o["products"].append({
+                    "charge_id": ch.id,
+                    "product_id": ch.product_id,
+                    "product_name": product.name if product else "Desconocido",
+                    "qty": ch.qty,
+                    "charged_qty": ch.charged_qty,
+                    "unit": ch.unit,
+                    "unit_price": ch.unit_price,
+                    "total": max(0.0, (qty_to_charge * float(ch.unit_price or 0.0)) - (ch.discount_amount or 0.0))
+                })
             
             apps = PaymentApplication.query.filter(PaymentApplication.charge_id.in_(charge_ids)).all() if charge_ids else []
             paid_by_charge = {}

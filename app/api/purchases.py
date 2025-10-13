@@ -272,3 +272,29 @@ def create_purchase():
         print(f"Error actualizando charged_qty: {e}")
         pass
     return jsonify(p.to_dict()), 201
+
+
+@purchases_bp.patch('/purchases/<int:purchase_id>/quantity')
+@require_token
+def update_purchase_quantity(purchase_id):
+    """Actualizar la cantidad comprada de una compra"""
+    purchase = Purchase.query.get_or_404(purchase_id)
+    data = request.get_json() or {}
+    
+    qty_kg = data.get('qty_kg')
+    qty_unit = data.get('qty_unit')
+    
+    if qty_kg is not None:
+        purchase.qty_kg = float(qty_kg)
+    if qty_unit is not None:
+        purchase.qty_unit = float(qty_unit)
+    
+    # Recalcular precio_per_unit si hay price_total
+    if purchase.price_total and (purchase.qty_kg or purchase.qty_unit):
+        if purchase.charged_unit == 'kg' and purchase.qty_kg:
+            purchase.price_per_unit = purchase.price_total / purchase.qty_kg
+        elif purchase.charged_unit == 'unit' and purchase.qty_unit:
+            purchase.price_per_unit = purchase.price_total / purchase.qty_unit
+    
+    db.session.commit()
+    return jsonify(purchase.to_dict())

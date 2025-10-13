@@ -74,3 +74,81 @@ def process_lot():
     return jsonify(rec.to_dict()), 201
 
 
+@inventory_bp.post("/inventory/lots/<int:lot_id>/assign")
+@require_token
+def assign_lot_to_customer(lot_id):
+    """Asignar un lote excedente a un cliente como venta"""
+    from ..models.order_item import OrderItem
+    from ..models.charge import Charge
+    from ..models.catalog_price import CatalogPrice
+    from datetime import date
+    
+    data = request.get_json(silent=True) or {}
+    customer_id = data.get("customer_id")
+    order_id = data.get("order_id")
+    unit_price = data.get("unit_price")
+    
+    if not customer_id:
+        return jsonify({"error": "customer_id requerido"}), 400
+    
+    lot = InventoryLot.query.get_or_404(lot_id)
+    
+    # Determinar cantidad y unidad
+    qty = lot.qty_unit if lot.qty_unit else lot.qty_kg
+    unit = "unit" if lot.qty_unit else "kg"
+    charged_qty = qty
+    charged_unit = unit
+    
+    # Obtener precio si no se proporciona
+    if not unit_price:
+        price = CatalogPrice.query.filter(
+            CatalogPrice.product_id == lot.product_id,
+            CatalogPrice.date <= date.today()
+        ).order_by(CatalogPrice.date.desc()).first()
+        unit_price = float(price.sale_price) if price else 0.0
+    else:
+        unit_price = float(unit_price)
+    
+    # Crear OrderItem
+    order_item = OrderItem(
+        customer_id=customer_id,
+        order_id=order_id,
+        product_id=lot.product_id,
+        qty=qty,
+        unit=unit,
+        charged_qty=charged_qty,
+        charged_unit=charged_unit,
+        sale_unit_price=unit_price
+    )
+    db.session.add(order_item)
+    db.session.flush()
+    
+    # Crear Charge
+    total = charged_qty * unit_price
+    charge = Charge(
+        customer_id=customer_id,
+        order_id=order_id,
+        order_item_id=order_item.id,
+        product_id=lot.product_id,
+        qty=qty,
+        charged_qty=charged_qty,
+        unit=charged_unit,
+        unit_price=unit_price,
+        total=total,
+        status="pending"
+    )
+    db.session.add(charge)
+    
+    # Marcar lote como asignado
+    lot.status = "assigned"
+    lot.order_id = order_id
+    
+    db.session.commit()
+    
+    return jsonify({
+        "order_item": order_item.to_dict(),
+        "charge": charge.to_dict(),
+        "lot": lot.to_dict()
+    }), 201
+
+
