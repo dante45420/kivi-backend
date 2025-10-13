@@ -33,6 +33,7 @@ def create_app() -> Flask:
         from .models.purchase_allocation import PurchaseAllocation  # noqa: F401
         db.create_all()
 
+        from .api.auth import auth_bp
         from .api.products import products_bp
         from .api.backup import backup_bp
         from .api.orders import orders_bp
@@ -47,6 +48,7 @@ def create_app() -> Flask:
         from .api.inventory import inventory_bp
         from .api.variants import variants_bp
         from .api.accounting import accounting_bp
+        app.register_blueprint(auth_bp, url_prefix="/api")
         app.register_blueprint(products_bp, url_prefix="/api")
         app.register_blueprint(backup_bp, url_prefix="/api")
         app.register_blueprint(orders_bp, url_prefix="/api")
