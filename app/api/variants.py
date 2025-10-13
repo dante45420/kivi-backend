@@ -64,3 +64,20 @@ def create_tier():
     return jsonify(t.to_dict()), 201
 
 
+@variants_bp.put("/variants/tiers/<int:tier_id>")
+@require_token
+def update_tier(tier_id: int):
+    data = request.get_json(silent=True) or {}
+    t = VariantPriceTier.query.get_or_404(tier_id)
+    
+    if "min_qty" in data:
+        t.min_qty = float(data.get("min_qty") or 1.0)
+    if "sale_price" in data:
+        t.sale_price = float(data.get("sale_price") or 0)
+    if "unit" in data:
+        t.unit = data.get("unit") or "kg"
+    
+    db.session.commit()
+    return jsonify(t.to_dict())
+
+

@@ -17,5 +17,8 @@ with app.app_context():
     print('Base de datos inicializada correctamente')
 "
 
+echo "Ejecutando migraciones..."
+python migrate_add_category.py 2>/dev/null || echo "Migración ya aplicada o error menor"
+
 echo "Build completado!"
 

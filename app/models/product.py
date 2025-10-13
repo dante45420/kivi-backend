@@ -9,6 +9,8 @@ class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False, unique=True)
     default_unit = db.Column(db.String(16), nullable=False, default="kg")
+    category = db.Column(db.String(50), nullable=True)  # fruta, verdura, etc
+    purchase_type = db.Column(db.String(20), nullable=True, default="detalle")  # detalle o cajon
     notes = db.Column(db.Text, nullable=True)
     quality_notes = db.Column(db.Text, nullable=True)
     quality_photo_url = db.Column(db.Text, nullable=True)
@@ -22,6 +24,8 @@ class Product(db.Model):
             "id": self.id,
             "name": self.name,
             "default_unit": self.default_unit,
+            "category": self.category,
+            "purchase_type": self.purchase_type,
             "notes": self.notes,
             "quality_notes": self.quality_notes,
             "quality_photo_url": self.quality_photo_url,

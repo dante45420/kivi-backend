@@ -67,6 +67,8 @@ def create_product():
     product = Product(
         name=name,
         default_unit=default_unit,
+        category=data.get("category"),
+        purchase_type=data.get("purchase_type") or "detalle",
         notes=data.get("notes"),
         quality_notes=data.get("quality_notes"),
         quality_photo_url=data.get("quality_photo_url"),
@@ -109,21 +111,46 @@ def create_product():
 def update_product(product_id: int):
     product = Product.query.get_or_404(product_id)
     data = request.get_json(silent=True) or {}
+    
+    # Actualizar campos básicos
     if data.get("default_unit"):
         product.default_unit = data.get("default_unit")
+    if data.get("category") is not None:
+        product.category = data.get("category")
+    if data.get("purchase_type") is not None:
+        product.purchase_type = data.get("purchase_type")
     if "quality_notes" in data:
         product.quality_notes = data.get("quality_notes")
     if "quality_photo_url" in data:
         product.quality_photo_url = data.get("quality_photo_url")
-    # Permitir actualización explícita de precio default (crea nuevo catálogo hoy)
+    
+    # Actualizar precio default (actualiza el más reciente o crea uno nuevo si es de otra fecha)
     try:
         if data.get("sale_price") is not None:
             sp = float(data.get("sale_price"))
             if sp > 0:
-                c = CatalogPrice(product_id=product.id, date=date.today(), sale_price=sp, unit=product.default_unit)
-                db.session.add(c)
+                # Buscar precio de hoy
+                today_price = CatalogPrice.query.filter(
+                    CatalogPrice.product_id == product.id,
+                    CatalogPrice.date == date.today()
+                ).first()
+                
+                if today_price:
+                    # Actualizar precio existente de hoy
+                    today_price.sale_price = sp
+                    today_price.unit = product.default_unit
+                else:
+                    # Crear nuevo precio para hoy
+                    c = CatalogPrice(
+                        product_id=product.id, 
+                        date=date.today(), 
+                        sale_price=sp, 
+                        unit=product.default_unit
+                    )
+                    db.session.add(c)
     except Exception:
         pass
+    
     db.session.commit()
     return jsonify(product.to_dict())
 
