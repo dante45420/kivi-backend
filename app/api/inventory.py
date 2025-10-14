@@ -95,14 +95,17 @@ def assign_lot_to_customer(lot_id):
     
     lot = InventoryLot.query.get_or_404(lot_id)
     
-    # Si no hay order_id, buscar o crear un pedido de "Excedentes"
+    # Usar order_id del lote (mantiene el original) si no se proporciona
     if not order_id:
-        excess_order = Order.query.filter_by(title="Excedentes", status="emitido").first()
-        if not excess_order:
-            excess_order = Order(title="Excedentes", status="emitido")
-            db.session.add(excess_order)
-            db.session.flush()
-        order_id = excess_order.id
+        order_id = lot.order_id  # Mantener el pedido original
+        if not order_id:
+            # Solo si el lote tampoco tiene order_id, crear uno de "Excedentes"
+            excess_order = Order.query.filter_by(title="Excedentes", status="emitido").first()
+            if not excess_order:
+                excess_order = Order(title="Excedentes", status="emitido")
+                db.session.add(excess_order)
+                db.session.flush()
+            order_id = excess_order.id
     
     # Determinar cantidad a asignar
     lot_qty = lot.qty_unit if lot.qty_unit else lot.qty_kg
@@ -147,6 +150,7 @@ def assign_lot_to_customer(lot_id):
     charge = Charge(
         customer_id=customer_id,
         order_id=order_id,
+        original_order_id=lot.order_id or order_id,  # Mantener order_id original del lote
         order_item_id=order_item.id,
         product_id=lot.product_id,
         qty=qty,
@@ -203,9 +207,10 @@ def return_charge_to_excess(charge_id):
     else:
         qty_to_return = charge_qty
     
-    # Crear lote de excedente
+    # Crear lote de excedente MANTENIENDO el order_id original
     lot = InventoryLot(
         product_id=charge.product_id,
+        order_id=charge.original_order_id or charge.order_id,  # Mantener pedido original
         qty_kg=qty_to_return if charge.unit == "kg" else None,
         qty_unit=qty_to_return if charge.unit == "unit" else None,
         status="unassigned"
@@ -229,5 +234,61 @@ def return_charge_to_excess(charge_id):
         "charge": charge.to_dict(),
         "lot": lot.to_dict()
     }), 201
+
+
+@inventory_bp.patch("/charges/<int:charge_id>/order")
+@require_token
+def change_charge_order(charge_id):
+    """Cambiar el order_id de un cargo (en caso de error)"""
+    from ..models.charge import Charge
+    from ..models.order_item import OrderItem
+    
+    data = request.get_json(silent=True) or {}
+    new_order_id = data.get("order_id")
+    
+    if not new_order_id:
+        return jsonify({"error": "order_id requerido"}), 400
+    
+    charge = Charge.query.get_or_404(charge_id)
+    
+    # Verificar que el pedido existe
+    order = Order.query.get(new_order_id)
+    if not order:
+        return jsonify({"error": "Pedido no encontrado"}), 404
+    
+    # Actualizar el charge
+    charge.order_id = new_order_id
+    
+    # También actualizar el order_item si existe
+    if charge.order_item_id:
+        order_item = OrderItem.query.get(charge.order_item_id)
+        if order_item:
+            order_item.order_id = new_order_id
+    
+    db.session.commit()
+    
+    return jsonify({
+        "charge": charge.to_dict(),
+        "message": "Pedido actualizado correctamente"
+    })
+
+
+@inventory_bp.post("/inventory/lots/<int:lot_id>/waste")
+@require_token
+def mark_lot_as_waste(lot_id):
+    """Marcar un lote como merma (pérdida)"""
+    lot = InventoryLot.query.get_or_404(lot_id)
+    
+    if lot.status == "assigned":
+        return jsonify({"error": "El lote ya fue asignado"}), 400
+    
+    # Marcar como merma
+    lot.status = "waste"
+    db.session.commit()
+    
+    return jsonify({
+        "lot": lot.to_dict(),
+        "message": "Lote marcado como merma"
+    })
 
 

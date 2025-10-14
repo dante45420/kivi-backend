@@ -334,7 +334,8 @@ def confirm_current_draft():
             total = q_charge * float(unit_price or 0)
             db.session.add(Charge(
                 customer_id=it.customer_id, 
-                order_id=d.id, 
+                order_id=d.id,
+                original_order_id=d.id,  # pedido original
                 order_item_id=it.id, 
                 product_id=it.product_id, 
                 qty=float(it.qty or 0),  # cantidad pedida original

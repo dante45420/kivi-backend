@@ -156,21 +156,23 @@ def orders_summary():
         profit_amount = max(0.0, billed_total - total_cost)
         profit_pct = (profit_amount / billed_total * 100.0) if billed_total > 0 else 0.0
         
-        result.append({
-            "order": o.to_dict(),
-            "billed": billed_total,
-            "paid": paid,
-            "due": max(0.0, billed_total - paid),
-            "purchase_status": status,
-            "cost": total_cost,
-            "profit_amount": profit_amount,
-            "profit_pct": profit_pct,
-            "bought_money": 0.0,  # No usado en frontend
-            "missing_money": 0.0,  # No usado en frontend
-            "bought_tags": bought_tags,
-            "missing_tags": missing_tags,
-            "billed_by_customer": billed_by_customer,
-        })
+        # Solo incluir pedidos con facturación > 0
+        if billed_total > 0:
+            result.append({
+                "order": o.to_dict(),
+                "billed": billed_total,
+                "paid": paid,
+                "due": max(0.0, billed_total - paid),
+                "purchase_status": status,
+                "cost": total_cost,
+                "profit_amount": profit_amount,
+                "profit_pct": profit_pct,
+                "bought_money": 0.0,  # No usado en frontend
+                "missing_money": 0.0,  # No usado en frontend
+                "bought_tags": bought_tags,
+                "missing_tags": missing_tags,
+                "billed_by_customer": billed_by_customer,
+            })
     
     return jsonify(result)
 
@@ -179,6 +181,7 @@ def orders_summary():
 def update_charge_price(charge_id):
     """Actualizar el precio unitario de un cargo"""
     from ..models.charge import Charge
+    from ..models.order_item import OrderItem
     from ..db import db
 
     charge = Charge.query.get_or_404(charge_id)
@@ -191,6 +194,13 @@ def update_charge_price(charge_id):
     charge.unit_price = float(new_price)
     qty_to_charge = charge.charged_qty if charge.charged_qty is not None else float(charge.qty or 0.0)
     charge.total = qty_to_charge * float(charge.unit_price or 0.0)
+    
+    # TAMBIÉN actualizar el OrderItem relacionado para que el resumen de pedido refleje el nuevo precio
+    if charge.order_item_id:
+        order_item = OrderItem.query.get(charge.order_item_id)
+        if order_item:
+            order_item.sale_unit_price = float(new_price)
+    
     db.session.commit()
 
     return jsonify(charge.to_dict())
@@ -200,6 +210,7 @@ def update_charge_price(charge_id):
 def update_charge_quantity(charge_id):
     """Actualizar la cantidad de un cargo"""
     from ..models.charge import Charge
+    from ..models.order_item import OrderItem
     from ..db import db
 
     charge = Charge.query.get_or_404(charge_id)
@@ -211,6 +222,13 @@ def update_charge_quantity(charge_id):
 
     charge.charged_qty = float(new_qty)
     charge.total = float(charge.charged_qty or 0.0) * float(charge.unit_price or 0.0)
+    
+    # TAMBIÉN actualizar el OrderItem relacionado para que el resumen de pedido refleje la nueva cantidad
+    if charge.order_item_id:
+        order_item = OrderItem.query.get(charge.order_item_id)
+        if order_item:
+            order_item.charged_qty = float(new_qty)
+    
     db.session.commit()
 
     return jsonify(charge.to_dict())

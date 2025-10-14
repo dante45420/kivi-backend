@@ -9,6 +9,7 @@ class Charge(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     customer_id = db.Column(db.Integer, db.ForeignKey("customers.id"), nullable=False)
     order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), nullable=True)
+    original_order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), nullable=True)  # pedido original (se mantiene al reasignar)
     order_item_id = db.Column(db.Integer, db.ForeignKey("order_items.id"), nullable=True)
     product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=False)
     qty = db.Column(db.Float, nullable=False, default=0.0)  # cantidad pedida (original)
@@ -27,6 +28,7 @@ class Charge(db.Model):
             "id": self.id,
             "customer_id": self.customer_id,
             "order_id": self.order_id,
+            "original_order_id": self.original_order_id,
             "order_item_id": self.order_item_id,
             "product_id": self.product_id,
             "qty": self.qty,
