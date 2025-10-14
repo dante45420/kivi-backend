@@ -31,15 +31,15 @@ def orders_summary():
     """
     Resumen de contabilidad por pedido.
     
+    Query params:
+    - include_details=1 : Incluye desglose por cliente y producto
+    
     Lógica simplificada:
-    1. FACTURADO = suma de (charged_qty × sale_unit_price) de cada OrderItem
-       - charged_qty es la cantidad en la unidad de cobro (actualizada en compras)
-       - sale_unit_price es el precio por unidad de cobro (guardado en pedidos)
-    
+    1. FACTURADO = suma de charges activos (no cancelados)
     2. COSTO = suma de price_total de cada Purchase
-    
     3. COMPRADO/FALTANTE = comparación de cantidades pedidas vs compradas
     """
+    include_details = request.args.get('include_details') == '1'
     orders = Order.query.order_by(Order.created_at.desc()).limit(200).all()
     result = []
     
@@ -51,31 +51,38 @@ def orders_summary():
         purchases = Purchase.query.filter_by(order_id=o.id).all()
         
         # ===== 1. CÁLCULO DE FACTURADO =====
-        # Facturado total: suma de (charged_qty × sale_unit_price) por cada item
+        # USAR CHARGES en lugar de OrderItems para tener el monto real facturado (considerando cancelaciones)
+        # Usamos original_order_id para agrupar correctamente incluso cuando se reasignan productos
+        charges = Charge.query.filter(
+            (Charge.order_id == o.id) | (Charge.original_order_id == o.id)
+        ).filter(
+            Charge.status != 'cancelled'  # No contar cargos cancelados
+        ).all()
+        
         billed_total = 0.0
         billed_by_customer = {}
         
-        for item in items:
-            # Cantidad a cobrar: usar charged_qty si está disponible, si no usar qty
-            qty_to_bill = item.charged_qty if item.charged_qty is not None else float(item.qty or 0.0)
+        for charge in charges:
+            # Cantidad a cobrar
+            qty_to_bill = charge.charged_qty if charge.charged_qty is not None else float(charge.qty or 0.0)
             
-            # Precio de venta por unidad de cobro
-            unit_price = float(item.sale_unit_price or 0.0)
+            # Precio de venta por unidad
+            unit_price = float(charge.unit_price or 0.0)
             
-            # Monto facturado para este item
-            item_billed = qty_to_bill * unit_price
-            billed_total += item_billed
+            # Monto facturado
+            charge_billed = qty_to_bill * unit_price
+            billed_total += charge_billed
             
             # Acumular por cliente
-            customer_id = item.customer_id
-            billed_by_customer[customer_id] = billed_by_customer.get(customer_id, 0.0) + item_billed
+            customer_id = charge.customer_id
+            billed_by_customer[customer_id] = billed_by_customer.get(customer_id, 0.0) + charge_billed
         
         # ===== 2. CÁLCULO DE COSTO =====
         total_cost = 0.0
         for purchase in purchases:
             if purchase.price_total is not None:
                 total_cost += float(purchase.price_total or 0.0)
-            else:
+                else:
                 # Si no hay price_total, calcular desde price_per_unit × cantidad en charged_unit
                 unit = purchase.charged_unit or "kg"
                 qty = float(purchase.qty_kg or 0.0) if unit == "kg" else float(purchase.qty_unit or 0.0)
@@ -148,31 +155,105 @@ def orders_summary():
             status = "over"
         
         # ===== 4. PAGADO =====
-        charges = Charge.query.filter(Charge.order_id == o.id).all()
+        # Usar los mismos charges que se usaron para calcular billed
         charge_ids = [c.id for c in charges]
         paid = _sum_paid_for_charge_ids(charge_ids)
         
-        # ===== 5. RESULTADO =====
+        # ===== 5. DETALLES (si se solicita) =====
+        customers_detail = []
+        if include_details:
+            from ..models.customer import Customer
+            from ..models.product import Product
+            
+            # Agrupar charges por cliente
+            charges_by_customer = {}
+            for charge in charges:
+                if charge.customer_id not in charges_by_customer:
+                    charges_by_customer[charge.customer_id] = []
+                charges_by_customer[charge.customer_id].append(charge)
+            
+            for customer_id, cust_charges in charges_by_customer.items():
+                customer = Customer.query.get(customer_id)
+                cust_billed = billed_by_customer.get(customer_id, 0.0)
+                
+                # Agrupar por producto
+                products_detail = []
+                charges_by_product = {}
+                for charge in cust_charges:
+                    if charge.product_id not in charges_by_product:
+                        charges_by_product[charge.product_id] = []
+                    charges_by_product[charge.product_id].append(charge)
+                
+                for product_id, prod_charges in charges_by_product.items():
+                    product = Product.query.get(product_id)
+                    
+                    # Sumar cantidad y monto total para este producto
+                    total_qty = sum(
+                        (c.charged_qty if c.charged_qty is not None else c.qty) 
+                        for c in prod_charges
+                    )
+                    total_billed = sum(
+                        (c.charged_qty if c.charged_qty is not None else c.qty) * c.unit_price
+                        for c in prod_charges
+                    )
+                    
+                    # Estado de compra del producto
+                    purchased = purchased_by_product.get(product_id, {"kg": 0.0, "unit": 0.0})
+                    needed = needed_by_product.get(product_id, {"kg": 0.0, "unit": 0.0})
+                    
+                    # Usar la unidad del primer charge para determinar status
+                    unit = prod_charges[0].unit
+                    if unit == 'kg':
+                        purchase_ok = purchased.get("kg", 0) >= needed.get("kg", 0)
+                        has_excess = purchased.get("kg", 0) > needed.get("kg", 0)
+                    else:
+                        purchase_ok = purchased.get("unit", 0) >= needed.get("unit", 0)
+                        has_excess = purchased.get("unit", 0) > needed.get("unit", 0)
+                    
+                    products_detail.append({
+                        "product_id": product_id,
+                        "product_name": product.name if product else f"Producto #{product_id}",
+                        "qty": total_qty,
+                        "unit": unit,
+                        "unit_price": prod_charges[0].unit_price,  # Asumimos mismo precio
+                        "total_billed": total_billed,
+                        "purchase_status": "complete" if purchase_ok else ("over" if has_excess else "incomplete"),
+                        "charges": [c.to_dict() for c in prod_charges]
+                    })
+                
+                customers_detail.append({
+                    "customer_id": customer_id,
+                    "customer_name": customer.name if customer else f"Cliente #{customer_id}",
+                    "billed": cust_billed,
+                    "products": products_detail
+                })
+        
+        # ===== 6. RESULTADO =====
         profit_amount = max(0.0, billed_total - total_cost)
         profit_pct = (profit_amount / billed_total * 100.0) if billed_total > 0 else 0.0
         
         # Solo incluir pedidos con facturación > 0
         if billed_total > 0:
-            result.append({
-                "order": o.to_dict(),
+            row = {
+            "order": o.to_dict(),
                 "billed": billed_total,
-                "paid": paid,
+            "paid": paid,
                 "due": max(0.0, billed_total - paid),
-                "purchase_status": status,
-                "cost": total_cost,
-                "profit_amount": profit_amount,
-                "profit_pct": profit_pct,
+            "purchase_status": status,
+            "cost": total_cost,
+            "profit_amount": profit_amount,
+            "profit_pct": profit_pct,
                 "bought_money": 0.0,  # No usado en frontend
                 "missing_money": 0.0,  # No usado en frontend
-                "bought_tags": bought_tags,
-                "missing_tags": missing_tags,
-                "billed_by_customer": billed_by_customer,
-            })
+            "bought_tags": bought_tags,
+            "missing_tags": missing_tags,
+            "billed_by_customer": billed_by_customer,
+            }
+            
+            if include_details:
+                row["customers"] = customers_detail
+            
+            result.append(row)
     
     return jsonify(result)
 
