@@ -52,9 +52,9 @@ def orders_summary():
         
         # ===== 1. CÁLCULO DE FACTURADO =====
         # USAR CHARGES en lugar de OrderItems para tener el monto real facturado (considerando cancelaciones)
-        # Usamos original_order_id para agrupar correctamente incluso cuando se reasignan productos
+        # Usamos SOLO order_id (no original_order_id) para que solo aparezca en el pedido ACTUAL
         charges = Charge.query.filter(
-            (Charge.order_id == o.id) | (Charge.original_order_id == o.id)
+            Charge.order_id == o.id
         ).filter(
             Charge.status != 'cancelled'  # No contar cargos cancelados
         ).all()
