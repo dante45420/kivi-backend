@@ -180,19 +180,39 @@ def update_charge_price(charge_id):
     """Actualizar el precio unitario de un cargo"""
     from ..models.charge import Charge
     from ..db import db
-    
+
     charge = Charge.query.get_or_404(charge_id)
     data = request.get_json() or {}
     new_price = data.get('unit_price')
-    
+
     if new_price is None:
         return jsonify({"error": "unit_price requerido"}), 400
-    
+
     charge.unit_price = float(new_price)
     qty_to_charge = charge.charged_qty if charge.charged_qty is not None else float(charge.qty or 0.0)
     charge.total = qty_to_charge * float(charge.unit_price or 0.0)
     db.session.commit()
-    
+
+    return jsonify(charge.to_dict())
+
+
+@accounting_bp.patch("/charges/<int:charge_id>/quantity")
+def update_charge_quantity(charge_id):
+    """Actualizar la cantidad de un cargo"""
+    from ..models.charge import Charge
+    from ..db import db
+
+    charge = Charge.query.get_or_404(charge_id)
+    data = request.get_json() or {}
+    new_qty = data.get('charged_qty')
+
+    if new_qty is None:
+        return jsonify({"error": "charged_qty requerido"}), 400
+
+    charge.charged_qty = float(new_qty)
+    charge.total = float(charge.charged_qty or 0.0) * float(charge.unit_price or 0.0)
+    db.session.commit()
+
     return jsonify(charge.to_dict())
 
 
