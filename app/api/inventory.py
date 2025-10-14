@@ -77,27 +77,46 @@ def process_lot():
 @inventory_bp.post("/inventory/lots/<int:lot_id>/assign")
 @require_token
 def assign_lot_to_customer(lot_id):
-    """Asignar un lote excedente a un cliente como venta"""
+    """Asignar un lote excedente a un cliente como venta (completa o parcial)"""
     from ..models.order_item import OrderItem
     from ..models.charge import Charge
     from ..models.catalog_price import CatalogPrice
+    from ..models.order import Order
     from datetime import date
     
     data = request.get_json(silent=True) or {}
     customer_id = data.get("customer_id")
     order_id = data.get("order_id")
     unit_price = data.get("unit_price")
+    qty_to_assign = data.get("qty")  # Cantidad parcial opcional
     
     if not customer_id:
         return jsonify({"error": "customer_id requerido"}), 400
     
     lot = InventoryLot.query.get_or_404(lot_id)
     
-    # Determinar cantidad y unidad
-    qty = lot.qty_unit if lot.qty_unit else lot.qty_kg
-    unit = "unit" if lot.qty_unit else "kg"
+    # Si no hay order_id, buscar o crear un pedido de "Excedentes"
+    if not order_id:
+        excess_order = Order.query.filter_by(title="Excedentes", status="emitido").first()
+        if not excess_order:
+            excess_order = Order(title="Excedentes", status="emitido")
+            db.session.add(excess_order)
+            db.session.flush()
+        order_id = excess_order.id
+    
+    # Determinar cantidad a asignar
+    lot_qty = lot.qty_unit if lot.qty_unit else lot.qty_kg
+    lot_unit = "unit" if lot.qty_unit else "kg"
+    
+    if qty_to_assign:
+        qty = float(qty_to_assign)
+        if qty > lot_qty:
+            return jsonify({"error": f"Cantidad excede disponible ({lot_qty} {lot_unit})"}), 400
+    else:
+        qty = lot_qty
+    
     charged_qty = qty
-    charged_unit = unit
+    charged_unit = lot_unit
     
     # Obtener precio si no se proporciona
     if not unit_price:
@@ -115,7 +134,7 @@ def assign_lot_to_customer(lot_id):
         order_id=order_id,
         product_id=lot.product_id,
         qty=qty,
-        unit=unit,
+        unit=lot_unit,
         charged_qty=charged_qty,
         charged_unit=charged_unit,
         sale_unit_price=unit_price
@@ -139,14 +158,74 @@ def assign_lot_to_customer(lot_id):
     )
     db.session.add(charge)
     
-    # Marcar lote como asignado
-    lot.status = "assigned"
-    lot.order_id = order_id
+    # Actualizar o marcar lote
+    if qty < lot_qty:
+        # Asignación parcial: reducir cantidad del lote
+        if lot.qty_unit:
+            lot.qty_unit = lot_qty - qty
+        else:
+            lot.qty_kg = lot_qty - qty
+    else:
+        # Asignación completa: marcar como asignado
+        lot.status = "assigned"
+        lot.order_id = order_id
     
     db.session.commit()
     
     return jsonify({
         "order_item": order_item.to_dict(),
+        "charge": charge.to_dict(),
+        "lot": lot.to_dict()
+    }), 201
+
+
+@inventory_bp.post("/charges/<int:charge_id>/return")
+@require_token
+def return_charge_to_excess(charge_id):
+    """Devolver un cargo a excedentes (ej: cliente no lo quiso)"""
+    from ..models.charge import Charge
+    
+    data = request.get_json(silent=True) or {}
+    qty_to_return = data.get("qty")  # Cantidad a devolver (opcional, por defecto todo)
+    
+    charge = Charge.query.get_or_404(charge_id)
+    
+    if charge.status == "paid":
+        return jsonify({"error": "No se puede devolver un cargo ya pagado"}), 400
+    
+    # Determinar cantidad a devolver
+    charge_qty = charge.charged_qty if charge.charged_qty is not None else charge.qty
+    
+    if qty_to_return:
+        qty_to_return = float(qty_to_return)
+        if qty_to_return > charge_qty:
+            return jsonify({"error": f"Cantidad excede cargada ({charge_qty})"}), 400
+    else:
+        qty_to_return = charge_qty
+    
+    # Crear lote de excedente
+    lot = InventoryLot(
+        product_id=charge.product_id,
+        qty_kg=qty_to_return if charge.unit == "kg" else None,
+        qty_unit=qty_to_return if charge.unit == "unit" else None,
+        status="unassigned"
+    )
+    db.session.add(lot)
+    
+    # Actualizar o cancelar el cargo
+    if qty_to_return < charge_qty:
+        # Devolución parcial: reducir cantidad
+        charge.charged_qty = charge_qty - qty_to_return
+        charge.total = charge.charged_qty * float(charge.unit_price or 0.0)
+    else:
+        # Devolución completa: cancelar cargo
+        charge.status = "cancelled"
+        charge.charged_qty = 0
+        charge.total = 0
+    
+    db.session.commit()
+    
+    return jsonify({
         "charge": charge.to_dict(),
         "lot": lot.to_dict()
     }), 201
