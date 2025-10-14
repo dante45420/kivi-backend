@@ -11,7 +11,13 @@ def create_app() -> Flask:
     cfg = AppConfig()
     cfg.apply(app)
 
-    CORS(app, origins=[cfg.cors_origin], supports_credentials=False)
+    # Configuración CORS más robusta
+    CORS(app, 
+         origins=[cfg.cors_origin],
+         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+         allow_headers=["Content-Type", "Authorization", "X-Token"],
+         supports_credentials=False,
+         max_age=3600)
 
     db.init_app(app)
 
