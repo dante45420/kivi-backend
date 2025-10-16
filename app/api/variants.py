@@ -81,3 +81,21 @@ def update_tier(tier_id: int):
     return jsonify(t.to_dict())
 
 
+@variants_bp.delete("/variants/<int:variant_id>")
+@require_token
+def delete_variant(variant_id):
+    """Eliminar una variante de producto"""
+    variant = ProductVariant.query.get_or_404(variant_id)
+    
+    try:
+        # Eliminar primero los price tiers asociados
+        VariantPriceTier.query.filter_by(variant_id=variant_id).delete()
+        
+        # Eliminar la variante
+        db.session.delete(variant)
+        db.session.commit()
+        
+        return jsonify({"message": "Variante eliminada exitosamente"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500

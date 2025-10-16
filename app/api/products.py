@@ -83,25 +83,7 @@ def create_product():
         unit=default_unit or None,
     )
     db.session.add(catalog)
-    # Crear variante por defecto 'kivi' con su tier de precio
-    try:
-        db.session.flush()
-        kivi_variant = ProductVariant(product_id=product.id, label='kivi', active=True)
-        db.session.add(kivi_variant)
-        db.session.flush()
-        # Crear tier de precio para la variante kivi con los mismos valores que el default
-        from ..models.variant import VariantPriceTier
-        kivi_tier = VariantPriceTier(
-            product_id=product.id,
-            variant_id=kivi_variant.id,
-            min_qty=1.0,
-            unit=default_unit,
-            sale_price=sale_price
-        )
-        db.session.add(kivi_tier)
-    except Exception as e:
-        print(f"Error creando variante kivi: {e}")
-        pass
+    # No crear variante por defecto
     db.session.commit()
     return jsonify(product.to_dict()), 201
 
