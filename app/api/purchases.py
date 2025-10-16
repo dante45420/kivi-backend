@@ -298,3 +298,76 @@ def update_purchase_quantity(purchase_id):
     
     db.session.commit()
     return jsonify(purchase.to_dict())
+
+
+@purchases_bp.patch('/purchases/<int:purchase_id>/charged_unit')
+@require_token
+def update_purchase_charged_unit(purchase_id):
+    """Actualizar la unidad de cobro de una compra"""
+    purchase = Purchase.query.get_or_404(purchase_id)
+    data = request.get_json() or {}
+    
+    charged_unit = data.get('charged_unit')
+    if charged_unit not in ['kg', 'unit']:
+        return jsonify({"error": "charged_unit debe ser 'kg' o 'unit'"}), 400
+    
+    purchase.charged_unit = charged_unit
+    
+    # Recalcular precio_per_unit basado en la nueva unidad
+    if purchase.price_total:
+        if charged_unit == 'kg' and purchase.qty_kg:
+            purchase.price_per_unit = purchase.price_total / purchase.qty_kg
+        elif charged_unit == 'unit' and purchase.qty_unit:
+            purchase.price_per_unit = purchase.price_total / purchase.qty_unit
+    
+    # Actualizar OrderItems correspondientes
+    try:
+        if purchase.order_id and purchase.product_id:
+            from ..models.order_item import OrderItem as _OI
+            items = _OI.query.filter(
+                _OI.order_id == purchase.order_id,
+                _OI.product_id == purchase.product_id
+            ).all()
+            
+            for it in items:
+                it.charged_unit = charged_unit
+                # Recalcular charged_qty según la nueva unidad
+                if (it.unit or 'kg') == charged_unit:
+                    it.charged_qty = float(it.qty or 0.0)
+            
+            # Actualizar Charges
+            from ..models.charge import Charge as _Charge
+            for it in items:
+                charges = _Charge.query.filter(_Charge.order_item_id == it.id).all()
+                for charge in charges:
+                    charge.charged_qty = it.charged_qty
+                    qty_to_charge = charge.charged_qty if charge.charged_qty is not None else float(charge.qty or 0.0)
+                    charge.total = qty_to_charge * float(charge.unit_price or 0.0)
+    except Exception as e:
+        print(f"Error actualizando charged_unit en items: {e}")
+    
+    db.session.commit()
+    return jsonify(purchase.to_dict())
+
+
+@purchases_bp.delete('/purchases/<int:purchase_id>')
+@require_token
+def delete_purchase(purchase_id):
+    """Eliminar una compra (útil para corregir duplicados)"""
+    purchase = Purchase.query.get_or_404(purchase_id)
+    
+    try:
+        # Eliminar asignaciones relacionadas
+        PurchaseAllocation.query.filter(PurchaseAllocation.purchase_id == purchase_id).delete()
+        
+        # Eliminar lotes de inventario relacionados
+        InventoryLot.query.filter(InventoryLot.source_purchase_id == purchase_id).delete()
+        
+        # Eliminar la compra
+        db.session.delete(purchase)
+        db.session.commit()
+        
+        return jsonify({"message": "Compra eliminada exitosamente"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
