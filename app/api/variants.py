@@ -85,9 +85,19 @@ def update_tier(tier_id: int):
 @require_token
 def delete_variant(variant_id):
     """Eliminar una variante de producto"""
+    from ..models.order_item import OrderItem
+    
     variant = ProductVariant.query.get_or_404(variant_id)
     
     try:
+        # Verificar si la variante está siendo usada en order_items
+        order_items_using_variant = OrderItem.query.filter_by(variant_id=variant_id).count()
+        
+        if order_items_using_variant > 0:
+            return jsonify({
+                "error": f"No se puede eliminar esta variante porque está siendo usada en {order_items_using_variant} pedido(s). Primero debes actualizar o eliminar esos pedidos."
+            }), 400
+        
         # Eliminar primero los price tiers asociados
         VariantPriceTier.query.filter_by(variant_id=variant_id).delete()
         
@@ -105,6 +115,8 @@ def delete_variant(variant_id):
 @require_token
 def delete_kivi_variants():
     """Eliminar todas las variantes llamadas 'kivi' o similares"""
+    from ..models.order_item import OrderItem
+    
     try:
         # Buscar variantes con el nombre kivi (case insensitive)
         kivi_variants = ProductVariant.query.filter(ProductVariant.label.ilike('%kivi%')).all()
@@ -113,16 +125,35 @@ def delete_kivi_variants():
         if count == 0:
             return jsonify({"message": "No se encontraron variantes 'kivi' para eliminar"}), 200
         
-        # Eliminar price tiers asociados a estas variantes
+        # Verificar cuáles están en uso
+        in_use = []
+        can_delete = []
+        
         for v in kivi_variants:
+            order_items_count = OrderItem.query.filter_by(variant_id=v.id).count()
+            if order_items_count > 0:
+                in_use.append((v.id, v.label, order_items_count))
+            else:
+                can_delete.append(v)
+        
+        # Eliminar solo las que no están en uso
+        deleted_count = 0
+        for v in can_delete:
             VariantPriceTier.query.filter_by(variant_id=v.id).delete()
             db.session.delete(v)
+            deleted_count += 1
         
         db.session.commit()
         
+        message = f"Se eliminaron {deleted_count} variante(s) 'kivi'"
+        if in_use:
+            in_use_details = ", ".join([f"'{label}' (en {count} pedido(s))" for _, label, count in in_use])
+            message += f". No se pudieron eliminar {len(in_use)} variante(s) porque están en uso: {in_use_details}"
+        
         return jsonify({
-            "message": f"Se eliminaron {count} variante(s) 'kivi' exitosamente",
-            "count": count
+            "message": message,
+            "deleted": deleted_count,
+            "skipped": len(in_use)
         }), 200
     except Exception as e:
         db.session.rollback()
