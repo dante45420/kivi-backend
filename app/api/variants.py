@@ -114,7 +114,7 @@ def delete_variant(variant_id):
 @variants_bp.delete("/variants/bulk/kivi")
 @require_token
 def delete_kivi_variants():
-    """Eliminar todas las variantes llamadas 'kivi' o similares"""
+    """Eliminar todas las variantes llamadas 'kivi' o similares, desvinculándolas primero de los pedidos"""
     from ..models.order_item import OrderItem
     
     try:
@@ -125,35 +125,32 @@ def delete_kivi_variants():
         if count == 0:
             return jsonify({"message": "No se encontraron variantes 'kivi' para eliminar"}), 200
         
-        # Verificar cuáles están en uso
-        in_use = []
-        can_delete = []
+        kivi_variant_ids = [v.id for v in kivi_variants]
         
+        # PASO 1: Desvincular (poner NULL) en todos los order_items que usan estas variantes
+        order_items_updated = OrderItem.query.filter(OrderItem.variant_id.in_(kivi_variant_ids)).update(
+            {OrderItem.variant_id: None},
+            synchronize_session=False
+        )
+        
+        # PASO 2: Eliminar price tiers asociados
         for v in kivi_variants:
-            order_items_count = OrderItem.query.filter_by(variant_id=v.id).count()
-            if order_items_count > 0:
-                in_use.append((v.id, v.label, order_items_count))
-            else:
-                can_delete.append(v)
-        
-        # Eliminar solo las que no están en uso
-        deleted_count = 0
-        for v in can_delete:
             VariantPriceTier.query.filter_by(variant_id=v.id).delete()
+        
+        # PASO 3: Eliminar las variantes
+        for v in kivi_variants:
             db.session.delete(v)
-            deleted_count += 1
         
         db.session.commit()
         
-        message = f"Se eliminaron {deleted_count} variante(s) 'kivi'"
-        if in_use:
-            in_use_details = ", ".join([f"'{label}' (en {count} pedido(s))" for _, label, count in in_use])
-            message += f". No se pudieron eliminar {len(in_use)} variante(s) porque están en uso: {in_use_details}"
+        message = f"✓ Se eliminaron {count} variante(s) 'kivi' exitosamente"
+        if order_items_updated > 0:
+            message += f" (se desvincularon de {order_items_updated} pedido(s))"
         
         return jsonify({
             "message": message,
-            "deleted": deleted_count,
-            "skipped": len(in_use)
+            "deleted": count,
+            "order_items_updated": order_items_updated
         }), 200
     except Exception as e:
         db.session.rollback()
