@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, request
+from datetime import datetime
 
 from ..db import db
 from ..models.purchase import Purchase
@@ -6,6 +7,8 @@ from ..models.price_history import PriceHistory
 from ..models.catalog_price import CatalogPrice
 from ..models.order_item import OrderItem
 from ..models.inventory import InventoryLot
+from ..models.vendor import Vendor
+from ..models.vendor_product_price import VendorProductPrice
 from .auth import require_token
 from ..models.purchase_allocation import PurchaseAllocation
 
@@ -103,6 +106,61 @@ def create_purchase():
     ph = PriceHistory(product_id=product_id, cost=price_per_unit, sale=current_sale, unit=charged_unit)
     db.session.add(ph)
     db.session.commit()
+
+    # AUTO-ACTUALIZAR PRECIOS DE PROVEEDORES (para comerciantes B2B)
+    try:
+        vendor_name = p.vendor or "Lo Valledor"
+        # Buscar o crear vendor
+        vendor = Vendor.query.filter_by(name=vendor_name).first()
+        if not vendor:
+            vendor = Vendor(name=vendor_name, contact='', phone='', email='')
+            db.session.add(vendor)
+            db.session.flush()
+        
+        # Calcular precio final con markup (20% por defecto)
+        markup_percentage = 20.0
+        final_price = price_per_unit * (1 + markup_percentage / 100)
+        
+        # Actualizar o crear precio
+        vendor_price = VendorProductPrice.query.filter_by(
+            vendor_id=vendor.id,
+            product_id=product_id,
+            variant_id=None  # Por ahora solo productos sin variante
+        ).first()
+        
+        if vendor_price:
+            # Actualizar existente
+            if charged_unit == 'kg':
+                vendor_price.price_per_kg = price_per_unit
+            else:
+                vendor_price.price_per_unit = price_per_unit
+            vendor_price.unit = charged_unit
+            vendor_price.final_price = final_price
+            vendor_price.last_updated = datetime.utcnow()
+            vendor_price.source = 'auto'
+        else:
+            # Crear nuevo
+            vendor_price = VendorProductPrice(
+                vendor_id=vendor.id,
+                product_id=product_id,
+                variant_id=None,
+                price_per_kg=price_per_unit if charged_unit == 'kg' else None,
+                price_per_unit=price_per_unit if charged_unit == 'unit' else None,
+                unit=charged_unit,
+                markup_percentage=markup_percentage,
+                final_price=final_price,
+                source='auto',
+                is_available=True
+            )
+            db.session.add(vendor_price)
+        
+        db.session.commit()
+    except Exception as e:
+        # No bloquear compra si falla actualización de precios B2B
+        db.session.rollback()
+        print(f"Warning: No se pudo actualizar vendor_product_price: {e}")
+        # Re-commit para mantener la compra
+        db.session.commit()
 
     # Crear lote de inventario para sobrantes (solo la diferencia que excede lo requerido)
     try:
