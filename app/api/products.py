@@ -11,6 +11,13 @@ from .auth import require_token
 products_bp = Blueprint("products", __name__)
 
 
+def capitalize_name(name: str) -> str:
+    """Capitaliza la primera letra de cada palabra"""
+    if not name:
+        return name
+    return ' '.join(word.capitalize() for word in name.split())
+
+
 @products_bp.get("/products")
 def list_products():
     items = Product.query.order_by(Product.name.asc()).all()
@@ -55,6 +62,10 @@ def create_product():
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "name is required"}), 400
+    
+    # Capitalizar nombre
+    name = capitalize_name(name)
+    
     # Require initial sale price
     try:
         sale_price = float(data.get("sale_price"))
@@ -93,6 +104,10 @@ def create_product():
 def update_product(product_id: int):
     product = Product.query.get_or_404(product_id)
     data = request.get_json(silent=True) or {}
+    
+    # Actualizar nombre (capitalizado)
+    if data.get("name"):
+        product.name = capitalize_name(data.get("name").strip())
     
     # Actualizar campos básicos
     if data.get("default_unit"):

@@ -8,6 +8,13 @@ from .auth import require_token
 variants_bp = Blueprint("variants", __name__)
 
 
+def capitalize_name(name: str) -> str:
+    """Capitaliza la primera letra de cada palabra"""
+    if not name:
+        return name
+    return ' '.join(word.capitalize() for word in name.split())
+
+
 @variants_bp.get("/variants")
 def list_variants():
     product_id = request.args.get("product_id", type=int)
@@ -22,7 +29,8 @@ def list_variants():
 @require_token
 def create_variant():
     data = request.get_json(silent=True) or {}
-    v = ProductVariant(product_id=int(data.get("product_id")), label=(data.get("label") or "").strip(), active=bool(data.get("active") if data.get("active") is not None else True))
+    label = capitalize_name((data.get("label") or "").strip())
+    v = ProductVariant(product_id=int(data.get("product_id")), label=label, active=bool(data.get("active") if data.get("active") is not None else True))
     db.session.add(v)
     db.session.commit()
     return jsonify(v.to_dict()), 201
@@ -34,7 +42,7 @@ def update_variant(variant_id: int):
     data = request.get_json(silent=True) or {}
     v = ProductVariant.query.get_or_404(variant_id)
     if "label" in data:
-        v.label = (data.get("label") or v.label)
+        v.label = capitalize_name((data.get("label") or v.label).strip())
     if data.get("active") is not None:
         v.active = bool(data.get("active"))
     db.session.commit()
