@@ -37,6 +37,10 @@ def create_app() -> Flask:
         from .models.inventory import InventoryLot, ProcessingRecord  # noqa: F401
         from .models.variant import ProductVariant, VariantPriceTier  # noqa: F401
         from .models.purchase_allocation import PurchaseAllocation  # noqa: F401
+        from .models.merchant_user import MerchantUser  # noqa: F401
+        from .models.merchant_order import MerchantOrder  # noqa: F401
+        from .models.merchant_order_item import MerchantOrderItem  # noqa: F401
+        from .models.vendor_product_price import VendorProductPrice  # noqa: F401
         db.create_all()
 
         from .api.auth import auth_bp
@@ -54,6 +58,8 @@ def create_app() -> Flask:
         from .api.inventory import inventory_bp
         from .api.variants import variants_bp
         from .api.accounting import accounting_bp
+        from .api.admin_vendors import admin_vendors_bp
+        from .api.admin_kpis import admin_kpis_bp
         app.register_blueprint(auth_bp, url_prefix="/api")
         app.register_blueprint(products_bp, url_prefix="/api")
         app.register_blueprint(backup_bp, url_prefix="/api")
@@ -69,6 +75,8 @@ def create_app() -> Flask:
         app.register_blueprint(inventory_bp, url_prefix="/api")
         app.register_blueprint(variants_bp, url_prefix="/api")
         app.register_blueprint(accounting_bp, url_prefix="/api")
+        app.register_blueprint(admin_vendors_bp, url_prefix="/api")
+        app.register_blueprint(admin_kpis_bp, url_prefix="/api")
 
     # CLI
     from .cli import register_cli
