@@ -82,7 +82,7 @@ def orders_summary():
         for purchase in purchases:
             if purchase.price_total is not None:
                 total_cost += float(purchase.price_total or 0.0)
-            else:
+                else:
                 # Si no hay price_total, calcular desde price_per_unit × cantidad en charged_unit
                 unit = purchase.charged_unit or "kg"
                 qty = float(purchase.qty_kg or 0.0) if unit == "kg" else float(purchase.qty_unit or 0.0)
