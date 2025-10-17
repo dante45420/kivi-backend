@@ -99,3 +99,31 @@ def delete_variant(variant_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
+
+@variants_bp.delete("/variants/bulk/kivi")
+@require_token
+def delete_kivi_variants():
+    """Eliminar todas las variantes llamadas 'kivi' o similares"""
+    try:
+        # Buscar variantes con el nombre kivi (case insensitive)
+        kivi_variants = ProductVariant.query.filter(ProductVariant.label.ilike('%kivi%')).all()
+        count = len(kivi_variants)
+        
+        if count == 0:
+            return jsonify({"message": "No se encontraron variantes 'kivi' para eliminar"}), 200
+        
+        # Eliminar price tiers asociados a estas variantes
+        for v in kivi_variants:
+            VariantPriceTier.query.filter_by(variant_id=v.id).delete()
+            db.session.delete(v)
+        
+        db.session.commit()
+        
+        return jsonify({
+            "message": f"Se eliminaron {count} variante(s) 'kivi' exitosamente",
+            "count": count
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
