@@ -15,7 +15,7 @@ def create_app() -> Flask:
     CORS(app, 
          origins=[cfg.cors_origin],
          methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-         allow_headers=["Content-Type", "Authorization", "X-Token"],
+         allow_headers=["Content-Type", "Authorization", "X-Token", "X-API-Token"],
          supports_credentials=False,
          max_age=3600)
 
