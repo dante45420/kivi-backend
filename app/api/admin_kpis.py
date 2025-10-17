@@ -105,14 +105,19 @@ def get_kpis_overview():
     recompra_days = int(request.args.get('recompra_days', 15))
     
     # Clientes que compraron en el periodo
-    customers_with_orders = db.session.query(
+    query = db.session.query(
         Charge.customer_id,
         func.count(func.distinct(Charge.order_id)).label('num_orders')
     ).join(Order).filter(
-        Order.date >= date_from if date_from else True,
-        Order.date <= date_to if date_to else True,
         Charge.status != 'cancelled'
-    ).group_by(Charge.customer_id).all()
+    )
+    
+    if date_from:
+        query = query.filter(Order.date >= date_from)
+    if date_to:
+        query = query.filter(Order.date <= date_to)
+    
+    customers_with_orders = query.group_by(Charge.customer_id).all()
     
     total_customers = len(customers_with_orders)
     recompra_customers = len([c for c in customers_with_orders if c.num_orders > 1])
