@@ -20,6 +20,7 @@ with app.app_context():
 echo "Ejecutando migraciones..."
 python migrate_add_category.py 2>/dev/null || echo "Migración ya aplicada o error menor"
 python migrate_add_original_order_id.py 2>/dev/null || echo "Migración ya aplicada o error menor"
+python migrate_add_merchant_system.py 2>/dev/null || echo "Migración ya aplicada o error menor"
 
 echo "Build completado!"
 
