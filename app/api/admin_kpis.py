@@ -85,12 +85,39 @@ def get_kpis_overview():
             # Utilidad
             utilidad = total_billed - total_costs
             
-            # Clientes únicos
-            unique_customers = set()
+            # Desglose por cliente
+            customer_totals = {}
             for c in charges:
                 if c.customer_id:
-                    unique_customers.add(c.customer_id)
-            num_clientes = len(unique_customers)
+                    customer_id = c.customer_id
+                    amount = (c.charged_qty or c.qty or 0) * (c.unit_price or 0)
+                    
+                    if customer_id not in customer_totals:
+                        customer_totals[customer_id] = {
+                            'customer_id': customer_id,
+                            'total': 0,
+                            'num_pedidos': set()
+                        }
+                    
+                    customer_totals[customer_id]['total'] += amount
+                    customer_totals[customer_id]['num_pedidos'].add(c.order_id)
+            
+            # Obtener nombres de clientes
+            customer_breakdown = []
+            for cid, data in customer_totals.items():
+                customer = Customer.query.get(cid)
+                customer_breakdown.append({
+                    'customer_id': cid,
+                    'customer_name': customer.name if customer else f'Cliente {cid}',
+                    'total': round(data['total'], 2),
+                    'num_pedidos': len(data['num_pedidos']),
+                    'promedio_por_pedido': round(data['total'] / len(data['num_pedidos']), 2) if len(data['num_pedidos']) > 0 else 0
+                })
+            
+            # Ordenar por total descendente
+            customer_breakdown.sort(key=lambda x: x['total'], reverse=True)
+            
+            num_clientes = len(customer_totals)
             
             ticket_promedio = {
                 'total': round(total_billed, 2),
@@ -100,7 +127,8 @@ def get_kpis_overview():
                 'num_clientes': num_clientes,
                 'promedio_por_pedido': round(total_billed / len(orders), 2) if len(orders) > 0 else 0,
                 'promedio_por_cliente': round(total_billed / num_clientes, 2) if num_clientes > 0 else 0,
-                'margen_utilidad_porcentaje': round((utilidad / total_billed * 100), 2) if total_billed > 0 else 0
+                'margen_utilidad_porcentaje': round((utilidad / total_billed * 100), 2) if total_billed > 0 else 0,
+                'desglose_clientes': customer_breakdown
             }
         else:
             ticket_promedio = {
@@ -111,7 +139,8 @@ def get_kpis_overview():
                 'num_clientes': 0,
                 'promedio_por_pedido': 0,
                 'promedio_por_cliente': 0,
-                'margen_utilidad_porcentaje': 0
+                'margen_utilidad_porcentaje': 0,
+                'desglose_clientes': []
             }
         
         # 2. TASA DE RECOMPRA
