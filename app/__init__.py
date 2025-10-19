@@ -61,6 +61,9 @@ def create_app() -> Flask:
         from .api.admin_vendors import admin_vendors_bp
         from .api.admin_kpis import admin_kpis_bp
         from .api.merchant_auth import merchant_auth_bp
+        from .api.merchant_products import merchant_products_bp
+        from .api.merchant_orders import merchant_orders_bp
+        from .api.admin_merchant_orders import admin_merchant_orders_bp
         app.register_blueprint(auth_bp, url_prefix="/api")
         app.register_blueprint(products_bp, url_prefix="/api")
         app.register_blueprint(backup_bp, url_prefix="/api")
@@ -79,6 +82,9 @@ def create_app() -> Flask:
         app.register_blueprint(admin_vendors_bp, url_prefix="/api")
         app.register_blueprint(admin_kpis_bp, url_prefix="/api")
         app.register_blueprint(merchant_auth_bp, url_prefix="/api")
+        app.register_blueprint(merchant_products_bp, url_prefix="/api")
+        app.register_blueprint(merchant_orders_bp, url_prefix="/api")
+        app.register_blueprint(admin_merchant_orders_bp, url_prefix="/api")
 
     # CLI
     from .cli import register_cli

@@ -63,7 +63,7 @@ def get_kpis_overview():
             ).all()
             
             total_billed = sum(
-                (c.charged_qty or c.qty or 0) * (c.sale_unit_price or 0)
+                (c.charged_qty or c.qty or 0) * (c.unit_price or 0)
                 for c in charges
             )
             
@@ -221,12 +221,12 @@ def get_top_products():
         query = db.session.query(
             Charge.product_id,
             func.sum(Charge.charged_qty).label('total_qty'),
-            func.sum(Charge.charged_qty * Charge.sale_unit_price).label('total_revenue')
+            func.sum(Charge.charged_qty * Charge.unit_price).label('total_revenue')
         ).join(Order).filter(
             Charge.status != 'cancelled',
             Charge.product_id.isnot(None),
             Charge.charged_qty.isnot(None),
-            Charge.sale_unit_price.isnot(None)
+            Charge.unit_price.isnot(None)
         )
         
         if date_from:
@@ -237,7 +237,7 @@ def get_top_products():
         top_products = query.group_by(
             Charge.product_id
         ).order_by(
-            func.sum(Charge.charged_qty * Charge.sale_unit_price).desc()
+            func.sum(Charge.charged_qty * Charge.unit_price).desc()
         ).limit(limit).all()
         
         result = []
