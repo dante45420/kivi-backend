@@ -177,3 +177,115 @@ def toggle_availability(price_id: int):
     db.session.commit()
     return jsonify(price.to_dict())
 
+
+@admin_vendors_bp.post("/admin/vendors/prices/batch")
+@require_token
+def batch_update_vendor_prices():
+    """Actualizar múltiples precios de golpe (Vuelta de Reconocimiento)"""
+    try:
+        data = request.get_json(silent=True) or {}
+        vendor_id = data.get('vendor_id')
+        prices_data = data.get('prices', [])  # Lista de {product_id, unit, base_price}
+        
+        if not vendor_id:
+            return jsonify({'error': 'vendor_id es requerido'}), 400
+        
+        if not prices_data:
+            return jsonify({'error': 'prices es requerido'}), 400
+        
+        # Verificar que el vendor existe
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({'error': 'Proveedor no encontrado'}), 404
+        
+        results = []
+        errors = []
+        
+        for price_item in prices_data:
+            try:
+                product_id = price_item.get('product_id')
+                unit = price_item.get('unit', 'kg')
+                base_price = float(price_item.get('base_price', 0))
+                markup = float(price_item.get('markup_percentage', 20))
+                
+                if not product_id or base_price <= 0:
+                    errors.append(f"Producto {product_id}: datos inválidos")
+                    continue
+                
+                # Verificar que el producto existe
+                product = Product.query.get(product_id)
+                if not product:
+                    errors.append(f"Producto {product_id}: no encontrado")
+                    continue
+                
+                # Calcular precio final
+                final_price = base_price * (1 + markup / 100)
+                
+                # Buscar si ya existe
+                existing_price = VendorProductPrice.query.filter_by(
+                    vendor_id=vendor_id,
+                    product_id=product_id,
+                    variant_id=None  # Solo productos sin variante por ahora
+                ).first()
+                
+                if existing_price:
+                    # Actualizar
+                    if unit == 'kg':
+                        existing_price.price_per_kg = base_price
+                        existing_price.price_per_unit = None
+                    else:
+                        existing_price.price_per_unit = base_price
+                        existing_price.price_per_kg = None
+                    
+                    existing_price.unit = unit
+                    existing_price.markup_percentage = markup
+                    existing_price.final_price = final_price
+                    existing_price.last_updated = datetime.utcnow()
+                    existing_price.source = 'manual'
+                    existing_price.is_available = True
+                    
+                    results.append({
+                        'product_id': product_id,
+                        'action': 'updated',
+                        'price_id': existing_price.id
+                    })
+                else:
+                    # Crear nuevo
+                    new_price = VendorProductPrice(
+                        vendor_id=vendor_id,
+                        product_id=product_id,
+                        variant_id=None,
+                        price_per_kg=base_price if unit == 'kg' else None,
+                        price_per_unit=base_price if unit == 'unit' else None,
+                        unit=unit,
+                        markup_percentage=markup,
+                        final_price=final_price,
+                        source='manual',
+                        is_available=True
+                    )
+                    db.session.add(new_price)
+                    db.session.flush()
+                    
+                    results.append({
+                        'product_id': product_id,
+                        'action': 'created',
+                        'price_id': new_price.id
+                    })
+            
+            except Exception as e:
+                errors.append(f"Producto {price_item.get('product_id')}: {str(e)}")
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'results': results,
+            'errors': errors,
+            'updated_count': len([r for r in results if r['action'] == 'updated']),
+            'created_count': len([r for r in results if r['action'] == 'created'])
+        }), 200
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
