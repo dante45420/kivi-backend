@@ -25,3 +25,4 @@ class PurchaseAllocation(db.Model):
 
 
 
+
