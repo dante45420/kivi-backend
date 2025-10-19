@@ -12,6 +12,11 @@ class AppConfig:
     secret_token: str = os.getenv("SECRET_TOKEN", "dev-token")
     cors_origin: str = os.getenv("CORS_ORIGIN", "http://localhost:5173")
 
+    @property
+    def cors_origins(self) -> list:
+        """Parse CORS_ORIGIN as comma-separated list"""
+        return [origin.strip() for origin in self.cors_origin.split(',')]
+
     def apply(self, app) -> None:
         app.config["SQLALCHEMY_DATABASE_URI"] = self.database_url
         app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False

@@ -13,7 +13,7 @@ def create_app() -> Flask:
 
     # Configuración CORS más robusta
     CORS(app, 
-         origins=[cfg.cors_origin],
+         origins=cfg.cors_origins,
          methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
          allow_headers=["Content-Type", "Authorization", "X-Token", "X-API-Token"],
          supports_credentials=False,
