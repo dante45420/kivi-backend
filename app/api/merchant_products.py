@@ -89,6 +89,7 @@ def get_merchant_products(user):
                 'variant_label': variant_label,
                 'unit': price_obj.unit,
                 'price': price_obj.final_price,
+                'min_qty': price_obj.min_qty or 1.0,
                 'last_updated': price_obj.last_updated.isoformat() if price_obj.last_updated else None
             }
             

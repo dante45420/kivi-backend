@@ -84,6 +84,7 @@ def create_vendor_price(vendor_id: int):
     unit = data.get('unit', 'kg')
     cost_price = float(data.get('cost_price', 0))
     markup = float(data.get('markup_percentage', 20))
+    min_qty = float(data.get('min_qty', 1.0))
     
     if not product_id or cost_price <= 0:
         return jsonify({'error': 'product_id y cost_price son requeridos'}), 400
@@ -110,6 +111,7 @@ def create_vendor_price(vendor_id: int):
         price_per_unit=cost_price if unit == 'unit' else None,
         markup_percentage=markup,
         final_price=final_price,
+        min_qty=min_qty,
         source='manual',
         is_available=True
     )
@@ -149,6 +151,9 @@ def update_vendor_price(price_id: int):
     
     if 'is_available' in data:
         price.is_available = bool(data['is_available'])
+    
+    if 'min_qty' in data:
+        price.min_qty = float(data['min_qty'])
     
     price.last_updated = datetime.utcnow()
     price.source = 'manual'
@@ -260,6 +265,7 @@ def batch_update_vendor_prices():
                         unit=unit,
                         markup_percentage=markup,
                         final_price=final_price,
+                        min_qty=1.0,
                         source='manual',
                         is_available=True
                     )

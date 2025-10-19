@@ -15,6 +15,7 @@ class VendorProductPrice(db.Model):
     unit = db.Column(db.String(20), nullable=False)
     markup_percentage = db.Column(db.Float, default=20.0)
     final_price = db.Column(db.Float, nullable=False)
+    min_qty = db.Column(db.Float, default=1.0)  # Cantidad mínima de compra
     is_available = db.Column(db.Boolean, default=True)
     last_updated = db.Column(db.DateTime, default=datetime.utcnow)
     source = db.Column(db.String(50), default='auto')  # 'auto' o 'manual'
@@ -30,6 +31,7 @@ class VendorProductPrice(db.Model):
             "unit": self.unit,
             "markup_percentage": self.markup_percentage,
             "final_price": self.final_price,
+            "min_qty": self.min_qty,
             "is_available": self.is_available,
             "last_updated": self.last_updated.isoformat() if self.last_updated else None,
             "source": self.source,
