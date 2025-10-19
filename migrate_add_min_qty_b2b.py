@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app import create_app
 from app.db import db
+from sqlalchemy import text
 
 def run_migration():
     app = create_app()
@@ -21,10 +22,10 @@ def run_migration():
         
         if 'min_qty' not in columns:
             print("Agregando columna min_qty a vendor_product_prices...")
-            db.session.execute("""
+            db.session.execute(text("""
                 ALTER TABLE vendor_product_prices 
                 ADD COLUMN min_qty FLOAT DEFAULT 1.0
-            """)
+            """))
             db.session.commit()
             print("✓ Columna min_qty agregada exitosamente")
         else:
