@@ -121,7 +121,7 @@ def get_kpis_overview():
         query = db.session.query(
             Charge.customer_id,
             func.count(func.distinct(Charge.order_id)).label('num_orders')
-        ).join(Order).filter(
+        ).join(Order, Charge.order_id == Order.id).filter(
             Charge.status != 'cancelled',
             Charge.customer_id.isnot(None)
         )
@@ -150,7 +150,7 @@ def get_kpis_overview():
         # Clientes con pedidos recientes
         clientes_activos = db.session.query(
             func.count(func.distinct(Charge.customer_id))
-        ).join(Order).filter(
+        ).join(Order, Charge.order_id == Order.id).filter(
             Order.date >= fecha_limite,
             Charge.status != 'cancelled',
             Charge.customer_id.isnot(None)
@@ -168,7 +168,7 @@ def get_kpis_overview():
         
         # Clientes que compraron este mes
         clientes_este_mes = set(
-            c.customer_id for c in Charge.query.join(Order).filter(
+            c.customer_id for c in Charge.query.join(Order, Charge.order_id == Order.id).filter(
                 Order.date >= inicio_mes,
                 Charge.customer_id.isnot(None)
             ).all()
@@ -176,7 +176,7 @@ def get_kpis_overview():
         
         # Clientes que compraron antes de este mes
         clientes_antes_mes = set(
-            c.customer_id for c in Charge.query.join(Order).filter(
+            c.customer_id for c in Charge.query.join(Order, Charge.order_id == Order.id).filter(
                 Order.date < inicio_mes,
                 Charge.customer_id.isnot(None)
             ).all()
@@ -222,7 +222,7 @@ def get_top_products():
             Charge.product_id,
             func.sum(Charge.charged_qty).label('total_qty'),
             func.sum(Charge.charged_qty * Charge.unit_price).label('total_revenue')
-        ).join(Order).filter(
+        ).join(Order, Charge.order_id == Order.id).filter(
             Charge.status != 'cancelled',
             Charge.product_id.isnot(None),
             Charge.charged_qty.isnot(None),
