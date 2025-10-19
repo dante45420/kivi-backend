@@ -47,9 +47,9 @@ def get_kpis_overview():
         # Filtro base de órdenes
         orders_query = Order.query
         if date_from:
-            orders_query = orders_query.filter(Order.date >= date_from)
+            orders_query = orders_query.filter(func.date(Order.created_at) >= date_from)
         if date_to:
-            orders_query = orders_query.filter(Order.date <= date_to)
+            orders_query = orders_query.filter(func.date(Order.created_at) <= date_to)
         
         orders = orders_query.all()
         order_ids = [o.id for o in orders]
@@ -127,9 +127,9 @@ def get_kpis_overview():
         )
         
         if date_from:
-            query = query.filter(Order.date >= date_from)
+            query = query.filter(func.date(Order.created_at) >= date_from)
         if date_to:
-            query = query.filter(Order.date <= date_to)
+            query = query.filter(func.date(Order.created_at) <= date_to)
         
         customers_with_orders = query.group_by(Charge.customer_id).all()
         
@@ -151,7 +151,7 @@ def get_kpis_overview():
         clientes_activos = db.session.query(
             func.count(func.distinct(Charge.customer_id))
         ).join(Order, Charge.order_id == Order.id).filter(
-            Order.date >= fecha_limite,
+            func.date(Order.created_at) >= fecha_limite,
             Charge.status != 'cancelled',
             Charge.customer_id.isnot(None)
         ).scalar() or 0
@@ -169,7 +169,7 @@ def get_kpis_overview():
         # Clientes que compraron este mes
         clientes_este_mes = set(
             c.customer_id for c in Charge.query.join(Order, Charge.order_id == Order.id).filter(
-                Order.date >= inicio_mes,
+                func.date(Order.created_at) >= inicio_mes,
                 Charge.customer_id.isnot(None)
             ).all()
         )
@@ -177,7 +177,7 @@ def get_kpis_overview():
         # Clientes que compraron antes de este mes
         clientes_antes_mes = set(
             c.customer_id for c in Charge.query.join(Order, Charge.order_id == Order.id).filter(
-                Order.date < inicio_mes,
+                func.date(Order.created_at) < inicio_mes,
                 Charge.customer_id.isnot(None)
             ).all()
         )
@@ -213,11 +213,13 @@ def get_kpis_overview():
 @admin_kpis_bp.get("/admin/kpis/productos-top")
 @require_token
 def get_top_products():
-    """Productos más vendidos"""
+    """Productos más vendidos con filtros por utilidad, unidades o monto"""
     try:
         limit = int(request.args.get('limit', 10))
+        sort_by = request.args.get('sort_by', 'revenue')  # 'revenue', 'quantity', 'profit'
         date_from, date_to = parse_date_params()
         
+        # Obtener datos agregados por producto
         query = db.session.query(
             Charge.product_id,
             func.sum(Charge.charged_qty).label('total_qty'),
@@ -230,26 +232,54 @@ def get_top_products():
         )
         
         if date_from:
-            query = query.filter(Order.date >= date_from)
+            query = query.filter(func.date(Order.created_at) >= date_from)
         if date_to:
-            query = query.filter(Order.date <= date_to)
+            query = query.filter(func.date(Order.created_at) <= date_to)
         
-        top_products = query.group_by(
-            Charge.product_id
-        ).order_by(
-            func.sum(Charge.charged_qty * Charge.unit_price).desc()
-        ).limit(limit).all()
+        products_data = query.group_by(Charge.product_id).all()
         
+        # Calcular costos por producto
+        costs_query = db.session.query(
+            Purchase.product_id,
+            func.sum(Purchase.price_total).label('total_cost')
+        ).join(Order, Purchase.order_id == Order.id).filter(
+            Purchase.product_id.isnot(None)
+        )
+        
+        if date_from:
+            costs_query = costs_query.filter(func.date(Order.created_at) >= date_from)
+        if date_to:
+            costs_query = costs_query.filter(func.date(Order.created_at) <= date_to)
+        
+        costs_data = {row.product_id: float(row.total_cost or 0) for row in costs_query.group_by(Purchase.product_id).all()}
+        
+        # Construir resultado con utilidad
         result = []
-        for product_id, qty, revenue in top_products:
+        for product_id, qty, revenue in products_data:
             product = Product.query.get(product_id)
             if product:
+                cost = costs_data.get(product_id, 0)
+                profit = float(revenue or 0) - cost
+                
                 result.append({
                     'product_id': product_id,
                     'product_name': product.name,
                     'cantidad_vendida': round(float(qty or 0), 2),
-                    'ingresos_totales': round(float(revenue or 0), 2)
+                    'ingresos_totales': round(float(revenue or 0), 2),
+                    'costos_totales': round(cost, 2),
+                    'utilidad': round(profit, 2)
                 })
+        
+        # Ordenar según el criterio solicitado
+        if sort_by == 'quantity':
+            result.sort(key=lambda x: x['cantidad_vendida'], reverse=True)
+        elif sort_by == 'profit':
+            result.sort(key=lambda x: x['utilidad'], reverse=True)
+        else:  # revenue (default)
+            result.sort(key=lambda x: x['ingresos_totales'], reverse=True)
+        
+        # Limitar resultados
+        result = result[:limit]
         
         return jsonify(result)
     
