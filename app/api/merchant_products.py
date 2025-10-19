@@ -47,14 +47,24 @@ def get_merchant_products(user):
     Catálogo de productos disponibles para comerciantes con precios B2B
     """
     try:
-        # Obtener todos los precios disponibles agrupados por producto
-        prices = VendorProductPrice.query.filter_by(is_available=True).all()
+        # Obtener todos los precios disponibles con joins
+        prices = db.session.query(
+            VendorProductPrice,
+            Vendor.name.label('vendor_name'),
+            ProductVariant.label.label('variant_label')
+        ).join(
+            Vendor, VendorProductPrice.vendor_id == Vendor.id
+        ).outerjoin(
+            ProductVariant, VendorProductPrice.variant_id == ProductVariant.id
+        ).filter(
+            VendorProductPrice.is_available == True
+        ).all()
         
         # Agrupar por producto
         products_dict = {}
         
-        for price in prices:
-            product_id = price.product_id
+        for price_obj, vendor_name, variant_label in prices:
+            product_id = price_obj.product_id
             
             if product_id not in products_dict:
                 product = Product.query.get(product_id)
@@ -73,13 +83,13 @@ def get_merchant_products(user):
             
             # Agregar información del precio
             vendor_info = {
-                'vendor_id': price.vendor_id,
-                'vendor_name': price.vendor_name,
-                'variant_id': price.variant_id,
-                'variant_label': price.variant_label,
-                'unit': price.unit,
-                'price': price.final_price,
-                'last_updated': price.last_updated.isoformat() if price.last_updated else None
+                'vendor_id': price_obj.vendor_id,
+                'vendor_name': vendor_name,
+                'variant_id': price_obj.variant_id,
+                'variant_label': variant_label,
+                'unit': price_obj.unit,
+                'price': price_obj.final_price,
+                'last_updated': price_obj.last_updated.isoformat() if price_obj.last_updated else None
             }
             
             products_dict[product_id]['vendors'].append(vendor_info)
