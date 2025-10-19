@@ -129,3 +129,126 @@ def toggle_merchant_status(merchant_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+
+@admin_merchant_orders_bp.post("/admin/merchants")
+@require_token
+def create_merchant():
+    """Crear nuevo comerciante"""
+    try:
+        data = request.get_json(silent=True) or {}
+        
+        email = (data.get('email') or '').strip()
+        password = data.get('password') or ''
+        business_name = (data.get('business_name') or '').strip()
+        
+        if not email or not password or not business_name:
+            return jsonify({'error': 'Email, contraseña y nombre de negocio son requeridos'}), 400
+        
+        # Verificar si el email ya existe
+        existing = MerchantUser.query.filter_by(email=email).first()
+        if existing:
+            return jsonify({'error': 'El email ya está registrado'}), 400
+        
+        # Crear nuevo comerciante
+        merchant = MerchantUser(
+            email=email,
+            business_name=business_name,
+            contact_name=data.get('contact_name'),
+            phone=data.get('phone'),
+            address=data.get('address'),
+            rut=data.get('rut'),
+            is_active=data.get('is_active', True)
+        )
+        merchant.set_password(password)
+        
+        db.session.add(merchant)
+        db.session.commit()
+        
+        result = merchant.to_dict()
+        result['plain_password'] = password  # Solo para respuesta de creación
+        
+        return jsonify(result), 201
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_merchant_orders_bp.get("/admin/merchants/<int:merchant_id>")
+@require_token
+def get_merchant(merchant_id):
+    """Obtener detalle de comerciante"""
+    try:
+        merchant = MerchantUser.query.get_or_404(merchant_id)
+        return jsonify(merchant.to_dict()), 200
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_merchant_orders_bp.patch("/admin/merchants/<int:merchant_id>")
+@require_token
+def update_merchant(merchant_id):
+    """Actualizar comerciante"""
+    try:
+        merchant = MerchantUser.query.get_or_404(merchant_id)
+        data = request.get_json(silent=True) or {}
+        
+        # Actualizar campos
+        if 'email' in data:
+            email = data['email'].strip()
+            # Verificar que no exista otro merchant con ese email
+            existing = MerchantUser.query.filter(
+                MerchantUser.email == email,
+                MerchantUser.id != merchant_id
+            ).first()
+            if existing:
+                return jsonify({'error': 'El email ya está en uso'}), 400
+            merchant.email = email
+        
+        if 'business_name' in data:
+            merchant.business_name = data['business_name'].strip()
+        
+        if 'contact_name' in data:
+            merchant.contact_name = data['contact_name']
+        
+        if 'phone' in data:
+            merchant.phone = data['phone']
+        
+        if 'address' in data:
+            merchant.address = data['address']
+        
+        if 'rut' in data:
+            merchant.rut = data['rut']
+        
+        if 'is_active' in data:
+            merchant.is_active = bool(data['is_active'])
+        
+        # Cambiar contraseña si se proporciona
+        if 'password' in data and data['password']:
+            merchant.set_password(data['password'])
+        
+        db.session.commit()
+        
+        return jsonify(merchant.to_dict()), 200
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_merchant_orders_bp.delete("/admin/merchants/<int:merchant_id>")
+@require_token
+def delete_merchant(merchant_id):
+    """Eliminar comerciante"""
+    try:
+        merchant = MerchantUser.query.get_or_404(merchant_id)
+        db.session.delete(merchant)
+        db.session.commit()
+        
+        return jsonify({'message': 'Comerciante eliminado'}), 200
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
