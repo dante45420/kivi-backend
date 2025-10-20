@@ -188,31 +188,22 @@ def toggle_availability(price_id: int):
 def batch_update_vendor_prices():
     """Actualizar múltiples precios de golpe (Vuelta de Reconocimiento)"""
     try:
-        data = request.get_json(silent=True) or {}
-        
-        # Debug logging
-        print("========== BATCH UPDATE DEBUG ==========")
-        print(f"Request data: {data}")
-        print(f"Request data type: {type(data)}")
+        data = request.get_json() or {}
         
         vendor_id = data.get('vendor_id')
-        prices_data = data.get('prices', [])  # Lista de {product_id, unit, base_price}
-        
-        print(f"vendor_id: {vendor_id}")
-        print(f"prices_data: {prices_data}")
-        print(f"prices_data type: {type(prices_data)}")
-        print(f"prices_data length: {len(prices_data) if isinstance(prices_data, list) else 'N/A'}")
-        print("========================================")
+        prices_data = data.get('prices')
         
         if not vendor_id:
             return jsonify({'error': 'vendor_id es requerido'}), 400
         
-        if not prices_data or not isinstance(prices_data, list):
-            return jsonify({
-                'error': 'prices es requerido y debe ser una lista',
-                'received': str(prices_data),
-                'type': str(type(prices_data))
-            }), 400
+        if not prices_data:
+            return jsonify({'error': 'prices es requerido'}), 400
+        
+        if not isinstance(prices_data, list):
+            return jsonify({'error': 'prices debe ser una lista'}), 400
+        
+        if len(prices_data) == 0:
+            return jsonify({'error': 'prices no puede estar vacío'}), 400
         
         # Verificar que el vendor existe
         vendor = Vendor.query.get(vendor_id)
