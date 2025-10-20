@@ -187,24 +187,44 @@ def toggle_availability(price_id: int):
 @require_token
 def batch_update_vendor_prices():
     """Actualizar múltiples precios de golpe (Vuelta de Reconocimiento)"""
+    import sys
     try:
+        # Log del request raw
+        print("🔵 [BACKEND-1] === BATCH UPDATE REQUEST ===", file=sys.stderr)
+        print(f"🔵 [BACKEND-2] Content-Type: {request.content_type}", file=sys.stderr)
+        print(f"🔵 [BACKEND-3] Request data (raw): {request.data}", file=sys.stderr)
+        
         data = request.get_json() or {}
+        print(f"🔵 [BACKEND-4] Parsed JSON: {data}", file=sys.stderr)
+        print(f"🔵 [BACKEND-5] Type of data: {type(data)}", file=sys.stderr)
         
         vendor_id = data.get('vendor_id')
         prices_data = data.get('prices')
         
+        print(f"🔵 [BACKEND-6] vendor_id: {vendor_id} | tipo: {type(vendor_id)}", file=sys.stderr)
+        print(f"🔵 [BACKEND-7] prices_data: {prices_data} | tipo: {type(prices_data)}", file=sys.stderr)
+        print(f"🔵 [BACKEND-8] prices_data is list: {isinstance(prices_data, list)}", file=sys.stderr)
+        if isinstance(prices_data, list):
+            print(f"🔵 [BACKEND-9] prices_data length: {len(prices_data)}", file=sys.stderr)
+        
         # Validaciones mejoradas
         if not vendor_id:
+            print("🔵 [BACKEND-ERROR] vendor_id es requerido", file=sys.stderr)
             return jsonify({'error': 'vendor_id es requerido'}), 400
         
         if prices_data is None:
+            print("🔵 [BACKEND-ERROR] prices es None", file=sys.stderr)
             return jsonify({'error': 'El campo "prices" es requerido'}), 400
         
         if not isinstance(prices_data, list):
+            print(f"🔵 [BACKEND-ERROR] prices no es lista, es: {type(prices_data).__name__}", file=sys.stderr)
             return jsonify({'error': f'prices debe ser una lista, recibido: {type(prices_data).__name__}'}), 400
         
         if len(prices_data) == 0:
+            print("🔵 [BACKEND-ERROR] prices está vacío", file=sys.stderr)
             return jsonify({'error': 'La lista de prices no puede estar vacía'}), 400
+        
+        print("🔵 [BACKEND-10] Validaciones pasadas exitosamente", file=sys.stderr)
         
         # Verificar que el vendor existe
         vendor = Vendor.query.get(vendor_id)
