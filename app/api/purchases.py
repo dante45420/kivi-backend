@@ -6,11 +6,7 @@ from ..models.purchase import Purchase
 from ..models.price_history import PriceHistory
 from ..models.catalog_price import CatalogPrice
 from ..models.order_item import OrderItem
-from ..models.inventory import InventoryLot
-from ..models.vendor import Vendor
-from ..models.vendor_product_price import VendorProductPrice
 from .auth import require_token
-from ..models.purchase_allocation import PurchaseAllocation
 
 purchases_bp = Blueprint("purchases", __name__)
 
@@ -106,163 +102,6 @@ def create_purchase():
     ph = PriceHistory(product_id=product_id, cost=price_per_unit, sale=current_sale, unit=charged_unit)
     db.session.add(ph)
     db.session.commit()
-
-    # AUTO-ACTUALIZAR PRECIOS DE PROVEEDORES (para comerciantes B2B)
-    try:
-        vendor_name = p.vendor or "Lo Valledor"
-        # Buscar o crear vendor
-        vendor = Vendor.query.filter_by(name=vendor_name).first()
-        if not vendor:
-            vendor = Vendor(name=vendor_name, contact='', phone='', email='')
-            db.session.add(vendor)
-            db.session.flush()
-        
-        # Calcular precio final con markup (20% por defecto)
-        markup_percentage = 20.0
-        final_price = price_per_unit * (1 + markup_percentage / 100)
-        
-        # Actualizar o crear precio
-        vendor_price = VendorProductPrice.query.filter_by(
-            vendor_id=vendor.id,
-            product_id=product_id,
-            variant_id=None  # Por ahora solo productos sin variante
-        ).first()
-        
-        if vendor_price:
-            # Actualizar existente
-            if charged_unit == 'kg':
-                vendor_price.price_per_kg = price_per_unit
-            else:
-                vendor_price.price_per_unit = price_per_unit
-            vendor_price.unit = charged_unit
-            vendor_price.final_price = final_price
-            vendor_price.last_updated = datetime.utcnow()
-            vendor_price.source = 'auto'
-        else:
-            # Crear nuevo
-            vendor_price = VendorProductPrice(
-                vendor_id=vendor.id,
-                product_id=product_id,
-                variant_id=None,
-                price_per_kg=price_per_unit if charged_unit == 'kg' else None,
-                price_per_unit=price_per_unit if charged_unit == 'unit' else None,
-                unit=charged_unit,
-                markup_percentage=markup_percentage,
-                final_price=final_price,
-                source='auto',
-                is_available=True
-            )
-            db.session.add(vendor_price)
-        
-        db.session.commit()
-    except Exception as e:
-        # No bloquear compra si falla actualización de precios B2B
-        db.session.rollback()
-        print(f"Warning: No se pudo actualizar vendor_product_price: {e}")
-        # Re-commit para mantener la compra
-        db.session.commit()
-
-    # Crear lote de inventario para sobrantes (solo la diferencia que excede lo requerido)
-    try:
-        order_id = data.get("order_id")
-        if order_id:
-            items = OrderItem.query.filter_by(order_id=order_id, product_id=product_id).all()
-            need_kg = sum((it.qty or 0) for it in items if (it.unit or "kg") == "kg")
-            need_unit = sum((it.qty or 0) for it in items if (it.unit or "kg") == "unit")
-            got_prev = Purchase.query.filter_by(order_id=order_id, product_id=product_id).all()
-            prev_kg = sum((x.qty_kg or 0) for x in got_prev[:-1]) if got_prev else 0.0
-            prev_unit = sum((x.qty_unit or 0) for x in got_prev[:-1]) if got_prev else 0.0
-            buy_kg = float(p.qty_kg or 0.0)
-            buy_unit = float(p.qty_unit or 0.0)
-            # excedente atribuible a esta compra
-            rem_kg_before = max(0.0, (need_kg or 0.0) - (prev_kg or 0.0))
-            rem_unit_before = max(0.0, (need_unit or 0.0) - (prev_unit or 0.0))
-            extra_kg = max(0.0, buy_kg - rem_kg_before)
-            extra_unit = max(0.0, buy_unit - rem_unit_before)
-            if extra_kg > 0 or extra_unit > 0:
-                db.session.add(InventoryLot(product_id=product_id, source_purchase_id=p.id, order_id=order_id, qty_kg=(extra_kg or None), qty_unit=(extra_unit or None), status="unassigned"))
-                db.session.commit()
-        else:
-            # compras fuera de pedido: todo es excedente asignable
-            if (p.qty_kg or 0) or (p.qty_unit or 0):
-                db.session.add(InventoryLot(product_id=product_id, source_purchase_id=p.id, order_id=None, qty_kg=p.qty_kg, qty_unit=p.qty_unit, status="unassigned"))
-                db.session.commit()
-    except Exception:
-        pass
-    # Asignar automáticamente a clientes si se indican (CSV/lista) en compras incompletas
-    try:
-        order_id = data.get("order_id")
-        raw_customers = data.get("customers")
-        cust_list = []
-        if isinstance(raw_customers, list):
-            cust_list = [c.strip() for c in raw_customers if (c or "").strip()]
-        elif isinstance(raw_customers, str):
-            cust_list = [c.strip() for c in raw_customers.split(',') if c.strip()]
-        if order_id and cust_list:
-            # OrderItems de esos clientes para este producto
-            q_items = OrderItem.query.filter(OrderItem.order_id == order_id, OrderItem.product_id == product_id)
-            items = [it for it in q_items.all() if (it.customer_id and (it.unit or "kg") == charged_unit)]
-            # Map customer_id -> pendiente
-            pending = {}
-            for it in items:
-                bought_prev = 0.0
-                # calcular asignado previo
-                alloc_prev = PurchaseAllocation.query.join(OrderItem, PurchaseAllocation.order_item_id == OrderItem.id).filter(OrderItem.id == it.id).all()
-                bought_prev = sum(a.qty or 0.0 for a in alloc_prev)
-                need = max(0.0, float(it.qty or 0.0) - bought_prev)
-                if need > 0:
-                    pending[it.customer_id] = pending.get(it.customer_id, 0.0) + need
-            # distribuir la compra actual en orden del listado de clientes
-            remain = float(p.qty_kg if charged_unit=='kg' else p.qty_unit or 0.0)
-            for name in cust_list:
-                if remain <= 0: break
-                # buscar OrderItem del cliente por nombre
-                # nota: por simplicidad, buscar por nombre actual en draft_detail no disponible aquí; asumimos coincidencia por cantidad pendiente
-                for it in items:
-                    if pending.get(it.customer_id, 0.0) <= 0:
-                        continue
-                    take = min(remain, pending[it.customer_id])
-                    if take > 0:
-                        db.session.add(PurchaseAllocation(purchase_id=p.id, order_item_id=it.id, qty=take, unit=charged_unit))
-                        pending[it.customer_id] -= take
-                        remain -= take
-            db.session.commit()
-    except Exception:
-        pass
-    # Auto-asignar si la compra completa el producto (sin necesidad de especificar clientes)
-    try:
-        order_id = data.get("order_id")
-        if order_id:
-            # Solo para la unidad cobrada
-            q_items = OrderItem.query.filter(OrderItem.order_id == order_id, OrderItem.product_id == product_id, OrderItem.unit == charged_unit)
-            items = q_items.all()
-            if items:
-                # calcular pendiente previo a esta compra por item
-                pending_by_item = {}
-                total_pending = 0.0
-                for it in items:
-                    alloc_prev = PurchaseAllocation.query.filter(PurchaseAllocation.order_item_id == it.id).all()
-                    bought_prev = sum(float(a.qty or 0.0) for a in alloc_prev)
-                    need = max(0.0, float(it.qty or 0.0) - bought_prev)
-                    if need > 0:
-                        pending_by_item[it.id] = need
-                        total_pending += need
-                purchased_now = float(p.qty_kg if charged_unit == 'kg' else p.qty_unit or 0.0)
-                if purchased_now >= total_pending and total_pending > 0:
-                    remain = total_pending
-                    for it in items:
-                        need = pending_by_item.get(it.id, 0.0)
-                        if need <= 0:
-                            continue
-                        take = min(need, remain)
-                        if take > 0:
-                            db.session.add(PurchaseAllocation(purchase_id=p.id, order_item_id=it.id, qty=take, unit=charged_unit))
-                            remain -= take
-                            if remain <= 0:
-                                break
-                    db.session.commit()
-    except Exception:
-        pass
     # Actualizar charged_qty en OrderItem según conversión observada en esta compra
     # Este es el paso crítico para que la contabilidad funcione correctamente
     try:
@@ -325,9 +164,8 @@ def create_purchase():
                     charge.total = qty_to_charge * float(charge.unit_price or 0.0)
             
             db.session.commit()
-    except Exception as e:
-        # Log error pero no bloquear la compra
-        print(f"Error actualizando charged_qty: {e}")
+    except Exception:
+        # Error actualizando charged_qty, no bloquear la compra
         pass
     return jsonify(p.to_dict()), 201
 
@@ -401,8 +239,8 @@ def update_purchase_charged_unit(purchase_id):
                     charge.charged_qty = it.charged_qty
                     qty_to_charge = charge.charged_qty if charge.charged_qty is not None else float(charge.qty or 0.0)
                     charge.total = qty_to_charge * float(charge.unit_price or 0.0)
-    except Exception as e:
-        print(f"Error actualizando charged_unit en items: {e}")
+    except Exception:
+        pass
     
     db.session.commit()
     return jsonify(purchase.to_dict())
@@ -415,12 +253,6 @@ def delete_purchase(purchase_id):
     purchase = Purchase.query.get_or_404(purchase_id)
     
     try:
-        # Eliminar asignaciones relacionadas
-        PurchaseAllocation.query.filter(PurchaseAllocation.purchase_id == purchase_id).delete()
-        
-        # Eliminar lotes de inventario relacionados
-        InventoryLot.query.filter(InventoryLot.source_purchase_id == purchase_id).delete()
-        
         # Eliminar la compra
         db.session.delete(purchase)
         db.session.commit()

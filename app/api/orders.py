@@ -11,7 +11,6 @@ from ..models.order_item import OrderItem
 from ..models.purchase import Purchase
 from ..models.charge import Charge
 from ..models.variant import VariantPriceTier
-from ..models.purchase_allocation import PurchaseAllocation
 from ..services.order_parser import parse_orders_text
 from ..utils.text_match import similarity_score, normalize_text
 from .auth import require_token
@@ -50,13 +49,7 @@ def order_detail(order_id: int):
     customers = {c.id: c.name for c in Customer.query.filter(Customer.id.in_(customer_ids)).all()} if customer_ids else {}
     products = {p.id: p.name for p in Product.query.filter(Product.id.in_(product_ids)).all()} if product_ids else {}
 
-    # sumatoria de asignaciones por item
-    alloc_by_item = {}
-    if items:
-        ids = [it.id for it in items]
-        allocs = PurchaseAllocation.query.filter(PurchaseAllocation.order_item_id.in_(ids)).all()
-        for a in allocs:
-            alloc_by_item[a.order_item_id] = alloc_by_item.get(a.order_item_id, 0.0) + float(a.qty or 0.0)
+    # Detalles de items
     items_detailed = []
     for it in items:
         items_detailed.append({
@@ -64,7 +57,6 @@ def order_detail(order_id: int):
             "customer_name": customers.get(it.customer_id),
             "product_name": products.get(it.product_id),
             "has_note": bool((it.notes or "").strip()),
-            "allocated_qty": alloc_by_item.get(it.id, 0.0),
         })
 
     by_product = {}
@@ -212,8 +204,7 @@ def _create_product_with_kivi(product_name: str, sale_price: float, default_unit
             sale_price=sale_price
         )
         db.session.add(kivi_tier)
-    except Exception as e:
-        print(f"Error creando variante kivi: {e}")
+    except Exception:
         pass
     
     return product

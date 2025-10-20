@@ -29,18 +29,9 @@ def create_app() -> Flask:
         from .models.price_history import PriceHistory  # noqa: F401
         from .models.purchase import Purchase  # noqa: F401
         from .models.catalog_price import CatalogPrice  # noqa: F401
-        from .models.competitor_price import CompetitorPrice  # noqa: F401
-        from .models.vendor import Vendor  # noqa: F401
-        from .models.vendor_price import VendorPrice  # noqa: F401
         from .models.charge import Charge  # noqa: F401
         from .models.payment import Payment, PaymentApplication  # noqa: F401
-        from .models.inventory import InventoryLot, ProcessingRecord  # noqa: F401
         from .models.variant import ProductVariant, VariantPriceTier  # noqa: F401
-        from .models.purchase_allocation import PurchaseAllocation  # noqa: F401
-        from .models.merchant_user import MerchantUser  # noqa: F401
-        from .models.merchant_order import MerchantOrder  # noqa: F401
-        from .models.merchant_order_item import MerchantOrderItem  # noqa: F401
-        from .models.vendor_product_price import VendorProductPrice  # noqa: F401
         db.create_all()
 
         from .api.auth import auth_bp
@@ -48,45 +39,21 @@ def create_app() -> Flask:
         from .api.backup import backup_bp
         from .api.orders import orders_bp
         from .api.customers import customers_bp
-        from .api.prices import prices_bp
         from .api.purchases import purchases_bp
-        from .api.scrape import scrape_bp
-        from .api.vendors import vendors_bp
-        from .api.vendor_prices import vendor_prices_bp
         from .api.charges import charges_bp
         from .api.payments import payments_bp
-        from .api.inventory import inventory_bp
         from .api.variants import variants_bp
         from .api.accounting import accounting_bp
-        from .api.admin_vendors import admin_vendors_bp
-        from .api.admin_kpis import admin_kpis_bp
-        from .api.merchant_auth import merchant_auth_bp
-        from .api.merchant_products import merchant_products_bp
-        from .api.merchant_orders import merchant_orders_bp
-        from .api.admin_merchant_orders import admin_merchant_orders_bp
-        from .api.migration_helper import migration_bp
         app.register_blueprint(auth_bp, url_prefix="/api")
         app.register_blueprint(products_bp, url_prefix="/api")
         app.register_blueprint(backup_bp, url_prefix="/api")
         app.register_blueprint(orders_bp, url_prefix="/api")
         app.register_blueprint(customers_bp, url_prefix="/api")
-        app.register_blueprint(prices_bp, url_prefix="/api")
         app.register_blueprint(purchases_bp, url_prefix="/api")
-        app.register_blueprint(scrape_bp, url_prefix="/api")
-        app.register_blueprint(vendors_bp, url_prefix="/api")
-        app.register_blueprint(vendor_prices_bp, url_prefix="/api")
         app.register_blueprint(charges_bp, url_prefix="/api")
         app.register_blueprint(payments_bp, url_prefix="/api")
-        app.register_blueprint(inventory_bp, url_prefix="/api")
         app.register_blueprint(variants_bp, url_prefix="/api")
         app.register_blueprint(accounting_bp, url_prefix="/api")
-        app.register_blueprint(admin_vendors_bp, url_prefix="/api")
-        app.register_blueprint(admin_kpis_bp, url_prefix="/api")
-        app.register_blueprint(merchant_auth_bp, url_prefix="/api")
-        app.register_blueprint(merchant_products_bp, url_prefix="/api")
-        app.register_blueprint(merchant_orders_bp, url_prefix="/api")
-        app.register_blueprint(admin_merchant_orders_bp, url_prefix="/api")
-        app.register_blueprint(migration_bp, url_prefix="/api")
 
     # CLI
     from .cli import register_cli
