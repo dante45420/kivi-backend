@@ -7,7 +7,6 @@ from ..models.charge import Charge
 from ..models.payment import PaymentApplication
 from ..models.order_item import OrderItem
 from ..models.purchase import Purchase
-from ..models.purchase_allocation import PurchaseAllocation
 from ..models.variant import VariantPriceTier
 from ..models.catalog_price import CatalogPrice
 
