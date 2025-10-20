@@ -193,17 +193,18 @@ def batch_update_vendor_prices():
         vendor_id = data.get('vendor_id')
         prices_data = data.get('prices')
         
+        # Validaciones mejoradas
         if not vendor_id:
             return jsonify({'error': 'vendor_id es requerido'}), 400
         
-        if not prices_data:
-            return jsonify({'error': 'prices es requerido'}), 400
+        if prices_data is None:
+            return jsonify({'error': 'El campo "prices" es requerido'}), 400
         
         if not isinstance(prices_data, list):
-            return jsonify({'error': 'prices debe ser una lista'}), 400
+            return jsonify({'error': f'prices debe ser una lista, recibido: {type(prices_data).__name__}'}), 400
         
         if len(prices_data) == 0:
-            return jsonify({'error': 'prices no puede estar vacío'}), 400
+            return jsonify({'error': 'La lista de prices no puede estar vacía'}), 400
         
         # Verificar que el vendor existe
         vendor = Vendor.query.get(vendor_id)
