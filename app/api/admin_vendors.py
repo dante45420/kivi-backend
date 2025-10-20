@@ -209,9 +209,11 @@ def batch_update_vendor_prices():
         for price_item in prices_data:
             try:
                 product_id = price_item.get('product_id')
+                variant_id = price_item.get('variant_id')  # Ahora sí manejamos variantes
                 unit = price_item.get('unit', 'kg')
                 base_price = float(price_item.get('base_price', 0))
                 markup = float(price_item.get('markup_percentage', 20))
+                min_qty = float(price_item.get('min_qty', 1.0))
                 
                 if not product_id or base_price <= 0:
                     errors.append(f"Producto {product_id}: datos inválidos")
@@ -226,11 +228,11 @@ def batch_update_vendor_prices():
                 # Calcular precio final
                 final_price = base_price * (1 + markup / 100)
                 
-                # Buscar si ya existe
+                # Buscar si ya existe (considerando la variante)
                 existing_price = VendorProductPrice.query.filter_by(
                     vendor_id=vendor_id,
                     product_id=product_id,
-                    variant_id=None  # Solo productos sin variante por ahora
+                    variant_id=variant_id  # Ahora consideramos la variante
                 ).first()
                 
                 if existing_price:
@@ -245,12 +247,14 @@ def batch_update_vendor_prices():
                     existing_price.unit = unit
                     existing_price.markup_percentage = markup
                     existing_price.final_price = final_price
+                    existing_price.min_qty = min_qty
                     existing_price.last_updated = datetime.utcnow()
                     existing_price.source = 'manual'
                     existing_price.is_available = True
                     
                     results.append({
                         'product_id': product_id,
+                        'variant_id': variant_id,
                         'action': 'updated',
                         'price_id': existing_price.id
                     })
@@ -259,13 +263,13 @@ def batch_update_vendor_prices():
                     new_price = VendorProductPrice(
                         vendor_id=vendor_id,
                         product_id=product_id,
-                        variant_id=None,
+                        variant_id=variant_id,
                         price_per_kg=base_price if unit == 'kg' else None,
                         price_per_unit=base_price if unit == 'unit' else None,
                         unit=unit,
                         markup_percentage=markup,
                         final_price=final_price,
-                        min_qty=1.0,
+                        min_qty=min_qty,
                         source='manual',
                         is_available=True
                     )
@@ -274,6 +278,7 @@ def batch_update_vendor_prices():
                     
                     results.append({
                         'product_id': product_id,
+                        'variant_id': variant_id,
                         'action': 'created',
                         'price_id': new_price.id
                     })
