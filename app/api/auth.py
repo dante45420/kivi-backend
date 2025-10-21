@@ -23,7 +23,14 @@ def require_token(fn):
     def wrapper(*args, **kwargs):
         token = _get_token_from_request()
         if not token or token != ADMIN_TOKEN:
-            return jsonify({"error": "unauthorized"}), 401
+            response = jsonify({"error": "unauthorized"})
+            response.status_code = 401
+            # Agregar headers CORS manualmente para errores de autenticación
+            response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
+            response.headers['Access-Control-Allow-Credentials'] = 'false'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Token, X-API-Token'
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+            return response
         return fn(*args, **kwargs)
 
     return wrapper
