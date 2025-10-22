@@ -327,7 +327,7 @@ def update_charge_quantity(charge_id):
 @accounting_bp.get("/accounting/excess")
 def calculate_excess():
     """
-    Calcular excedentes reales: diferencia entre lo comprado y lo pedido
+    Calcular excedentes reales: diferencia entre lo comprado, lo pedido y lo reasignado
     (en la unidad de cobro, con conversiones aplicadas)
     """
     orders = Order.query.order_by(Order.created_at.desc()).limit(50).all()
@@ -375,11 +375,32 @@ def calculate_excess():
                 if purchase.eq_qty_unit:
                     purchased_by_product[pid]["qty"] += float(purchase.eq_qty_unit or 0.0)
         
-        # Calcular excedentes: comprado - pedido
+        # Agrupar lo reasignado (charges con original_order_id apuntando a este pedido)
+        # Estos son excedentes que ya fueron reasignados a otros clientes
+        from ..models.charge import Charge
+        reassigned_charges = Charge.query.filter(
+            Charge.original_order_id == o.id,
+            Charge.status != 'cancelled'  # No contar cancelados
+        ).all()
+        
+        reassigned_by_product = {}
+        for charge in reassigned_charges:
+            pid = charge.product_id
+            unit = charge.unit
+            qty = charge.charged_qty if charge.charged_qty is not None else float(charge.qty or 0.0)
+            
+            if pid not in reassigned_by_product:
+                reassigned_by_product[pid] = {"unit": unit, "qty": 0.0}
+            reassigned_by_product[pid]["qty"] += qty
+        
+        # Calcular excedentes: comprado - pedido - reasignado
         excesses = []
         for pid, purchased in purchased_by_product.items():
             needed = needed_by_product.get(pid, {"unit": purchased["unit"], "qty": 0.0})
-            excess_qty = purchased["qty"] - needed["qty"]
+            reassigned = reassigned_by_product.get(pid, {"unit": purchased["unit"], "qty": 0.0})
+            
+            # Excedente real = comprado - pedido - reasignado
+            excess_qty = purchased["qty"] - needed["qty"] - reassigned["qty"]
             
             if excess_qty > 0.01:  # Solo si hay excedente (con margen para errores de redondeo)
                 from ..models.product import Product
@@ -391,7 +412,8 @@ def calculate_excess():
                     "excess_qty": round(excess_qty, 2),
                     "unit": purchased["unit"],
                     "needed_qty": round(needed["qty"], 2),
-                    "purchased_qty": round(purchased["qty"], 2)
+                    "purchased_qty": round(purchased["qty"], 2),
+                    "reassigned_qty": round(reassigned["qty"], 2)
                 })
         
         if excesses:

@@ -31,6 +31,7 @@ def create_charge():
     c = Charge(
         customer_id=int(data.get("customer_id")),
         order_id=data.get("order_id"),
+        original_order_id=data.get("original_order_id"),  # Para rastrear reasignaciones de excedente
         order_item_id=data.get("order_item_id"),
         product_id=int(data.get("product_id")),
         qty=float(data.get("qty") or 0),
