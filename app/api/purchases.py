@@ -13,7 +13,13 @@ purchases_bp = Blueprint("purchases", __name__)
 
 @purchases_bp.get("/purchases")
 def list_purchases():
-    items = Purchase.query.order_by(Purchase.created_at.desc()).limit(200).all()
+    order_id = request.args.get("order_id", type=int)
+    
+    q = Purchase.query
+    if order_id:
+        q = q.filter(Purchase.order_id == order_id)
+    
+    items = q.order_by(Purchase.created_at.desc()).limit(200).all()
     return jsonify([p.to_dict() for p in items])
 
 
@@ -63,30 +69,8 @@ def create_purchase():
         if eq_unit is not None: p.eq_qty_unit = float(eq_unit)
     except Exception:
         pass
-    # Validar clientes obligatorios si la compra NO completa la cantidad requerida del producto
-    try:
-        order_id = data.get("order_id")
-        if order_id:
-            items = OrderItem.query.filter_by(order_id=order_id, product_id=product_id).all()
-            need_kg = sum((it.qty or 0) for it in items if (it.unit or "kg") == "kg")
-            need_unit = sum((it.qty or 0) for it in items if (it.unit or "kg") == "unit")
-            # Comprado hasta ahora (previo a commit) + actual
-            got_prev = Purchase.query.filter_by(order_id=order_id, product_id=product_id).all()
-            got_kg = sum((x.qty_kg or 0) for x in got_prev) + float(data.get("qty_kg") or 0)
-            got_unit = sum((x.qty_unit or 0) for x in got_prev) + float(data.get("qty_unit") or 0)
-            completes = ((need_kg == 0 or got_kg >= need_kg) and (need_unit == 0 or got_unit >= need_unit))
-            if not completes:
-                raw_customers = data.get("customers")
-                has_customers = False
-                if isinstance(raw_customers, list):
-                    has_customers = any((c or "").strip() for c in raw_customers)
-                else:
-                    has_customers = bool(((raw_customers or "").strip()))
-                if not has_customers:
-                    return jsonify({"error": "customers are required when product is not fully purchased"}), 400
-    except Exception:
-        # En caso de error de cálculo, no bloquear
-        pass
+    # NOTA: Ya no se requiere que clientes sea obligatorio si la compra no completa el pedido
+    # El sistema permite compras parciales sin especificar clientes
 
     # Guardar precio histórico automático: costo y venta actual
     current_sale = None
@@ -191,6 +175,36 @@ def update_purchase_quantity(purchase_id):
             purchase.price_per_unit = purchase.price_total / purchase.qty_kg
         elif purchase.charged_unit == 'unit' and purchase.qty_unit:
             purchase.price_per_unit = purchase.price_total / purchase.qty_unit
+    
+    db.session.commit()
+    return jsonify(purchase.to_dict())
+
+
+@purchases_bp.patch('/purchases/<int:purchase_id>/cost')
+@require_token
+def update_purchase_cost(purchase_id):
+    """Actualizar el costo de una compra"""
+    purchase = Purchase.query.get_or_404(purchase_id)
+    data = request.get_json() or {}
+    
+    price_total = data.get('price_total')
+    price_per_unit = data.get('price_per_unit')
+    
+    if price_total is not None:
+        purchase.price_total = float(price_total)
+        # Recalcular price_per_unit basado en la cantidad
+        if purchase.charged_unit == 'kg' and purchase.qty_kg:
+            purchase.price_per_unit = purchase.price_total / purchase.qty_kg
+        elif purchase.charged_unit == 'unit' and purchase.qty_unit:
+            purchase.price_per_unit = purchase.price_total / purchase.qty_unit
+    
+    if price_per_unit is not None:
+        purchase.price_per_unit = float(price_per_unit)
+        # Recalcular price_total basado en la cantidad
+        if purchase.charged_unit == 'kg' and purchase.qty_kg:
+            purchase.price_total = purchase.price_per_unit * purchase.qty_kg
+        elif purchase.charged_unit == 'unit' and purchase.qty_unit:
+            purchase.price_total = purchase.price_per_unit * purchase.qty_unit
     
     db.session.commit()
     return jsonify(purchase.to_dict())

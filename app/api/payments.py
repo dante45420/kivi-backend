@@ -28,8 +28,21 @@ def create_payment():
         # Validar campos requeridos
         if not data.get("customer_id"):
             return jsonify({"error": "customer_id es obligatorio"}), 400
+        
+        customer_id = int(data.get("customer_id"))
+        
+        # Validar que el cliente existe
+        from ..models.customer import Customer
+        customer = Customer.query.get(customer_id)
+        if not customer:
+            return jsonify({"error": f"Cliente con ID {customer_id} no encontrado"}), 404
+        
         if not data.get("amount"):
             return jsonify({"error": "amount es obligatorio"}), 400
+        
+        amount = float(data.get("amount"))
+        if amount <= 0:
+            return jsonify({"error": "amount debe ser mayor que 0"}), 400
         
         # order_id obligatorio para asociar el pago a un pedido específico
         try:
@@ -38,6 +51,12 @@ def create_payment():
             order_id = None
         if not order_id:
             return jsonify({"error": "order_id es obligatorio"}), 400
+        
+        # Validar que el pedido existe
+        from ..models.order import Order
+        order = Order.query.get(order_id)
+        if not order:
+            return jsonify({"error": f"Pedido con ID {order_id} no encontrado"}), 404
         
         # Parsear fecha si viene
         payment_date = None
@@ -76,8 +95,26 @@ def create_payment():
                     ch.status = "paid"
         else:
             # Distribución automática: por cliente y, si se especifica, por pedido
-            q = Charge.query.filter(Charge.customer_id == p.customer_id, Charge.status == "pending", Charge.order_id == order_id)
+            # Buscar charges pendientes del cliente en ese pedido
+            q = Charge.query.filter(
+                Charge.customer_id == p.customer_id, 
+                Charge.status == "pending", 
+                Charge.order_id == order_id
+            )
             charges = q.all()
+            
+            # Si no hay charges pendientes, intentar buscar todos los charges del pedido y cliente (incluyendo paid)
+            if not charges:
+                charges = Charge.query.filter(
+                    Charge.customer_id == p.customer_id,
+                    Charge.order_id == order_id
+                ).all()
+            
+            if not charges:
+                return jsonify({
+                    "error": f"No se encontraron cargos para el cliente '{customer.name}' en el pedido #{order_id}. Verifica que el cliente tenga items en este pedido."
+                }), 400
+            
             # calcular deuda de cada charge
             due_by_charge = {}
             total_due = 0.0
@@ -90,6 +127,12 @@ def create_payment():
                 if due > 0:
                     due_by_charge[ch.id] = due
                     total_due += due
+            
+            if total_due == 0:
+                return jsonify({
+                    "error": f"El cliente '{customer.name}' no tiene deuda pendiente en el pedido #{order_id}. La deuda ya está pagada completamente."
+                }), 400
+            
             remaining = int(round(float(p.amount or 0.0)))
             if total_due > 0 and remaining > 0:
                 # proporcional entero: primero parte entera por piso, luego repartir remanente por mayor residuo

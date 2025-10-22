@@ -251,6 +251,16 @@ def orders_summary():
             
             if include_details:
                 row["customers"] = customers_detail
+                # Incluir detalles de compras con información de productos
+                from ..models.product import Product
+                purchases_detail = []
+                for purchase in purchases:
+                    product = Product.query.get(purchase.product_id)
+                    purchases_detail.append({
+                        **purchase.to_dict(),
+                        "product_name": product.name if product else f"Producto #{purchase.product_id}"
+                    })
+                row["purchases"] = purchases_detail
             
             result.append(row)
     
@@ -312,6 +322,85 @@ def update_charge_quantity(charge_id):
     db.session.commit()
 
     return jsonify(charge.to_dict())
+
+
+@accounting_bp.get("/accounting/excess")
+def calculate_excess():
+    """
+    Calcular excedentes reales: diferencia entre lo comprado y lo pedido
+    (en la unidad de cobro, con conversiones aplicadas)
+    """
+    orders = Order.query.order_by(Order.created_at.desc()).limit(50).all()
+    result = []
+    
+    for o in orders:
+        # Obtener items y compras del pedido
+        items = OrderItem.query.filter_by(order_id=o.id).all()
+        purchases = Purchase.query.filter_by(order_id=o.id).all()
+        
+        if not purchases:
+            continue
+        
+        # Agrupar lo pedido por producto en la unidad de cobro (charged_unit)
+        # charged_qty ya tiene la conversión aplicada
+        needed_by_product = {}
+        for item in items:
+            pid = item.product_id
+            # Usar charged_unit y charged_qty que ya tienen la conversión aplicada
+            charged_unit = item.charged_unit or item.unit or "kg"
+            charged_qty = item.charged_qty if item.charged_qty is not None else float(item.qty or 0.0)
+            
+            if pid not in needed_by_product:
+                needed_by_product[pid] = {"unit": charged_unit, "qty": 0.0}
+            needed_by_product[pid]["qty"] += charged_qty
+        
+        # Agrupar lo comprado por producto en la unidad de cobro
+        purchased_by_product = {}
+        for purchase in purchases:
+            pid = purchase.product_id
+            charged_unit = purchase.charged_unit or "kg"
+            
+            if pid not in purchased_by_product:
+                purchased_by_product[pid] = {"unit": charged_unit, "qty": 0.0}
+            
+            # Sumar la cantidad comprada en la unidad de cobro
+            if charged_unit == "kg":
+                purchased_by_product[pid]["qty"] += float(purchase.qty_kg or 0.0)
+                # Si hay conversión de unidades a kg
+                if purchase.eq_qty_kg:
+                    purchased_by_product[pid]["qty"] += float(purchase.eq_qty_kg or 0.0)
+            else:  # unit
+                purchased_by_product[pid]["qty"] += float(purchase.qty_unit or 0.0)
+                # Si hay conversión de kg a unidades
+                if purchase.eq_qty_unit:
+                    purchased_by_product[pid]["qty"] += float(purchase.eq_qty_unit or 0.0)
+        
+        # Calcular excedentes: comprado - pedido
+        excesses = []
+        for pid, purchased in purchased_by_product.items():
+            needed = needed_by_product.get(pid, {"unit": purchased["unit"], "qty": 0.0})
+            excess_qty = purchased["qty"] - needed["qty"]
+            
+            if excess_qty > 0.01:  # Solo si hay excedente (con margen para errores de redondeo)
+                from ..models.product import Product
+                product = Product.query.get(pid)
+                excesses.append({
+                    "order_id": o.id,
+                    "product_id": pid,
+                    "product_name": product.name if product else f"Producto #{pid}",
+                    "excess_qty": round(excess_qty, 2),
+                    "unit": purchased["unit"],
+                    "needed_qty": round(needed["qty"], 2),
+                    "purchased_qty": round(purchased["qty"], 2)
+                })
+        
+        if excesses:
+            result.append({
+                "order": o.to_dict(),
+                "excesses": excesses
+            })
+    
+    return jsonify(result)
 
 
 @accounting_bp.get("/accounting/customers")

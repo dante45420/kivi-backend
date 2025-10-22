@@ -353,3 +353,155 @@ def create_order():
     _add_items(order, items); db.session.commit()
     order.title = f"Pedido Nro {order.id} - {date.today().isoformat()}"; db.session.commit()
     return jsonify(order.to_dict()), 201
+
+
+@orders_bp.post("/orders/<int:order_id>/items")
+@require_token
+def add_items_to_order(order_id: int):
+    """Agregar items a un pedido existente (incluso si está emitido)"""
+    order = Order.query.get_or_404(order_id)
+    data = request.get_json(silent=True) or {}
+    items = data.get("items") or []
+    
+    inserted = 0
+    skipped = []
+    
+    for idx, it in enumerate(items):
+        line_idx = it.get("line_index", idx)
+        customer_name = (it.get("customer") or "").strip()
+        
+        if not customer_name:
+            skipped.append({"index": line_idx, "reason": "missing_customer"})
+            continue
+            
+        customer = Customer.query.filter_by(name=customer_name).first()
+        if not customer:
+            customer = Customer(name=customer_name)
+            db.session.add(customer)
+            db.session.flush()
+        
+        product_id = it.get("product_id")
+        product_name = (it.get("product") or "").strip()
+        variant_id = it.get("variant_id")
+        sale_unit_price = it.get("sale_unit_price")
+        create_if_missing = bool(it.get("create_if_missing"))
+        
+        product = Product.query.get(product_id) if product_id else Product.query.filter(Product.name.ilike(product_name)).first()
+        
+        if not product and not create_if_missing:
+            skipped.append({"index": line_idx, "reason": "unresolved_product", "product": product_name})
+            continue
+            
+        if not product and create_if_missing and product_name:
+            try:
+                sale_price = float(it.get("sale_price")) if it.get("sale_price") is not None else None
+            except (TypeError, ValueError):
+                sale_price = None
+                
+            if sale_price is None or sale_price <= 0:
+                skipped.append({"index": line_idx, "reason": "missing_sale_price", "product": product_name})
+                continue
+                
+            default_unit = (it.get("default_unit") or it.get("unit") or "kg")
+            product = _create_product_with_kivi(product_name, sale_price, default_unit)
+        
+        if not product:
+            skipped.append({"index": line_idx, "reason": "empty_product_name"})
+            continue
+        
+        # Crear el OrderItem
+        charged_unit = (it.get("charged_unit") or getattr(product, 'default_unit', None) or it.get("unit") or "kg")
+        charged_qty = None
+        try:
+            if charged_unit and (it.get("unit") or "kg") != charged_unit:
+                charged_qty = float(it.get("charged_qty")) if it.get("charged_qty") is not None else None
+        except Exception:
+            charged_qty = None
+            
+        order_item = OrderItem(
+            order_id=order.id,
+            customer_id=customer.id,
+            product_id=product.id,
+            qty=float(it.get("qty") or 0),
+            unit=(it.get("unit") or "kg"),
+            charged_unit=charged_unit,
+            charged_qty=charged_qty,
+            notes=it.get("notes"),
+            variant_id=(int(variant_id) if variant_id else None),
+            sale_unit_price=(float(sale_unit_price) if sale_unit_price is not None else None)
+        )
+        db.session.add(order_item)
+        db.session.flush()
+        
+        # Si el pedido está emitido, crear el cargo automáticamente
+        if order.status == "emitido":
+            unit_price = float(sale_unit_price) if (sale_unit_price is not None) else 0.0
+            
+            if unit_price <= 0:
+                variant_id = it.get("variant_id")
+                q = VariantPriceTier.query.filter(
+                    VariantPriceTier.product_id == product.id,
+                    VariantPriceTier.unit == charged_unit
+                )
+                if variant_id is not None:
+                    q = q.filter((VariantPriceTier.variant_id == variant_id) | (VariantPriceTier.variant_id.is_(None)))
+                tiers = q.order_by(VariantPriceTier.min_qty.desc()).all()
+                for t in tiers:
+                    if float(it.get("qty") or 0) >= float(t.min_qty or 0):
+                        unit_price = float(t.sale_price or 0.0)
+                        break
+            
+            if unit_price <= 0:
+                c = (
+                    CatalogPrice.query.filter(CatalogPrice.product_id == product.id)
+                    .order_by(CatalogPrice.date.desc())
+                    .first()
+                )
+                unit_price = float(c.sale_price) if c else 0.0
+            
+            q_charge = float(charged_qty) if (charged_qty is not None) else float(it.get("qty") or 0)
+            total = q_charge * float(unit_price or 0)
+            
+            db.session.add(Charge(
+                customer_id=customer.id,
+                order_id=order.id,
+                original_order_id=order.id,
+                order_item_id=order_item.id,
+                product_id=product.id,
+                qty=float(it.get("qty") or 0),
+                charged_qty=charged_qty,
+                unit=charged_unit,
+                unit_price=unit_price or 0.0,
+                discount_amount=0.0,
+                discount_reason=None,
+                status="pending",
+                total=total
+            ))
+        
+        inserted += 1
+    
+    db.session.commit()
+    return jsonify({"ok": True, "order": order.to_dict(), "inserted": inserted, "skipped": skipped})
+
+
+@orders_bp.delete("/orders/<int:order_id>/items/<int:item_id>")
+@require_token
+def delete_order_item(order_id: int, item_id: int):
+    """Eliminar un item de un pedido y sus charges asociados"""
+    order = Order.query.get_or_404(order_id)
+    item = OrderItem.query.filter_by(id=item_id, order_id=order_id).first_or_404()
+    
+    try:
+        # Eliminar charges asociados
+        charges = Charge.query.filter_by(order_item_id=item.id).all()
+        for charge in charges:
+            db.session.delete(charge)
+        
+        # Eliminar el item
+        db.session.delete(item)
+        db.session.commit()
+        
+        return jsonify({"message": "Item eliminado exitosamente"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
