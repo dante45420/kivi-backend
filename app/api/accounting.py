@@ -436,6 +436,8 @@ def calculate_excess():
         
         # Calcular excedentes: comprado - pedido - reasignado
         excesses = []
+        
+        # Primero, procesar todos los productos que se compraron
         for pid, purchased in purchased_by_product.items():
             needed = needed_by_product.get(pid, {"unit": purchased["unit"], "qty": 0.0})
             reassigned = reassigned_by_product.get(pid, {"unit": purchased["unit"], "qty": 0.0})
@@ -456,6 +458,13 @@ def calculate_excess():
                     "purchased_qty": round(purchased["qty"], 2),
                     "reassigned_qty": round(reassigned["qty"], 2)
                 })
+        
+        # También verificar productos que se pidieron pero no se compraron (no debería haber excedente)
+        # Pero por completitud, los incluimos con excedente 0
+        for pid, needed in needed_by_product.items():
+            if pid not in purchased_by_product:
+                # Se pidió pero no se compró - no hay excedente
+                continue
         
         if excesses:
             result.append({
@@ -591,6 +600,77 @@ def debug_orders():
         result.append(order_debug)
     
     return jsonify(result)
+
+
+@accounting_bp.get("/accounting/excess/test")
+def test_excess_calculation():
+    """
+    Test específico del cálculo de excedentes para el pedido 7
+    """
+    order_id = 7
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "Pedido 7 no encontrado"}), 404
+    
+    # Obtener items y compras del pedido
+    items = OrderItem.query.filter_by(order_id=order.id).all()
+    purchases = Purchase.query.filter_by(order_id=order.id).all()
+    
+    # Agrupar lo pedido por producto
+    needed_by_product = {}
+    for item in items:
+        pid = item.product_id
+        charged_unit = item.charged_unit or item.unit or "kg"
+        charged_qty = item.charged_qty if item.charged_qty is not None else float(item.qty or 0.0)
+        
+        if pid not in needed_by_product:
+            needed_by_product[pid] = {"unit": charged_unit, "qty": 0.0}
+        needed_by_product[pid]["qty"] += charged_qty
+    
+    # Agrupar lo comprado por producto
+    purchased_by_product = {}
+    for purchase in purchases:
+        pid = purchase.product_id
+        charged_unit = purchase.charged_unit or "kg"
+        
+        if pid not in purchased_by_product:
+            purchased_by_product[pid] = {"unit": charged_unit, "qty": 0.0}
+        
+        if charged_unit == "kg":
+            purchased_by_product[pid]["qty"] += float(purchase.qty_kg or 0.0)
+            if purchase.eq_qty_kg:
+                purchased_by_product[pid]["qty"] += float(purchase.eq_qty_kg or 0.0)
+        else:  # unit
+            purchased_by_product[pid]["qty"] += float(purchase.qty_unit or 0.0)
+            if purchase.eq_qty_unit:
+                purchased_by_product[pid]["qty"] += float(purchase.eq_qty_unit or 0.0)
+    
+    # Calcular excedentes
+    excesses = []
+    for pid, purchased in purchased_by_product.items():
+        needed = needed_by_product.get(pid, {"unit": purchased["unit"], "qty": 0.0})
+        excess_qty = purchased["qty"] - needed["qty"]
+        
+        from ..models.product import Product
+        product = Product.query.get(pid)
+        
+        excesses.append({
+            "product_id": pid,
+            "product_name": product.name if product else f"Producto #{pid}",
+            "needed_qty": round(needed["qty"], 2),
+            "purchased_qty": round(purchased["qty"], 2),
+            "excess_qty": round(excess_qty, 2),
+            "unit": purchased["unit"],
+            "has_excess": excess_qty > 0.01
+        })
+    
+    return jsonify({
+        "order_id": order_id,
+        "order_title": order.title,
+        "needed_by_product": needed_by_product,
+        "purchased_by_product": purchased_by_product,
+        "excesses": excesses
+    })
 
 
 @accounting_bp.get("/accounting/vendors/commissions")
