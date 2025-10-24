@@ -26,6 +26,7 @@ def _sum_paid_for_charge_ids(charge_ids: list[int]) -> float:
 
 
 @accounting_bp.get("/accounting/orders")
+@require_token
 def orders_summary():
     """
     Resumen de contabilidad por pedido.
@@ -37,9 +38,19 @@ def orders_summary():
     1. FACTURADO = suma de charges activos (no cancelados)
     2. COSTO = suma de price_total de cada Purchase
     3. COMPRADO/FALTANTE = comparación de cantidades pedidas vs compradas
+    
+    Los vendedores solo ven sus propias órdenes.
     """
+    user = getattr(request, 'current_user', None)
     include_details = request.args.get('include_details') == '1'
-    orders = Order.query.order_by(Order.created_at.desc()).limit(200).all()
+    
+    query = Order.query
+    
+    # Si es vendedor, filtrar solo sus órdenes
+    if user and user.role == 'vendor':
+        query = query.filter(Order.vendor_id == user.id)
+    
+    orders = query.order_by(Order.created_at.desc()).limit(200).all()
     result = []
     
     for o in orders:
@@ -227,8 +238,32 @@ def orders_summary():
                     "products": products_detail
                 })
         
-        # ===== 6. RESULTADO =====
-        profit_amount = max(0.0, billed_total - total_cost)
+        # ===== 6. COMISIONES DE VENDEDORES =====
+        vendor_commission_amount = 0.0
+        vendor_commission_pct = 0.0
+        kivi_amount = 0.0
+        vendor_info = None
+        
+        # Si el pedido tiene un vendedor asignado, calcular su comisión
+        if o.vendor_id:
+            from ..models.user import User
+            vendor = User.query.get(o.vendor_id)
+            if vendor:
+                profit_amount = max(0.0, billed_total - total_cost)
+                vendor_commission_pct = vendor.commission_rate * 100  # Convertir a porcentaje para display
+                vendor_commission_amount = profit_amount * vendor.commission_rate
+                kivi_amount = profit_amount - vendor_commission_amount
+                vendor_info = {
+                    "vendor_id": vendor.id,
+                    "vendor_name": vendor.name,
+                    "commission_rate": vendor.commission_rate
+                }
+        else:
+            # Si no hay vendedor, toda la utilidad es para Kivi
+            profit_amount = max(0.0, billed_total - total_cost)
+            kivi_amount = profit_amount
+        
+        # ===== 7. RESULTADO =====
         profit_pct = (profit_amount / billed_total * 100.0) if billed_total > 0 else 0.0
         
         # Solo incluir pedidos con facturación > 0
@@ -242,6 +277,11 @@ def orders_summary():
             "cost": total_cost,
             "profit_amount": profit_amount,
             "profit_pct": profit_pct,
+                # Comisiones de vendedor
+                "vendor_commission_amount": vendor_commission_amount,
+                "vendor_commission_pct": vendor_commission_pct,
+                "kivi_amount": kivi_amount,
+                "vendor_info": vendor_info,
                 "bought_money": 0.0,  # No usado en frontend
                 "missing_money": 0.0,  # No usado en frontend
             "bought_tags": bought_tags,
@@ -425,7 +465,108 @@ def calculate_excess():
     return jsonify(result)
 
 
+@accounting_bp.get("/accounting/vendors/commissions")
+@require_token
+def vendors_commissions_summary():
+    """
+    Resumen de comisiones a pagar a vendedores.
+    Solo accesible para admin.
+    
+    Retorna un resumen por vendedor con:
+    - Total facturado
+    - Total costos
+    - Total utilidad
+    - Comisión del vendedor
+    - Cantidad para Kivi
+    """
+    user = getattr(request, 'current_user', None)
+    
+    # Solo admin puede ver este reporte
+    if not user or user.role != 'admin':
+        return jsonify({"error": "forbidden", "message": "Solo admins pueden ver este reporte"}), 403
+    
+    date_from = request.args.get("date_from")
+    date_to = request.args.get("date_to")
+    
+    from ..models.user import User
+    from datetime import datetime
+    
+    # Obtener todos los vendedores
+    vendors = User.query.filter_by(role='vendor', active=True).all()
+    
+    result = []
+    
+    for vendor in vendors:
+        # Obtener órdenes del vendedor
+        query = Order.query.filter(Order.vendor_id == vendor.id, Order.status == 'emitido')
+        
+        # Aplicar filtros de fecha si existen
+        if date_from:
+            try:
+                date_from_obj = datetime.strptime(date_from, '%Y-%m-%d')
+                query = query.filter(Order.created_at >= date_from_obj)
+            except:
+                pass
+        
+        if date_to:
+            try:
+                date_to_obj = datetime.strptime(date_to, '%Y-%m-%d')
+                query = query.filter(Order.created_at <= date_to_obj)
+            except:
+                pass
+        
+        orders = query.all()
+        
+        if not orders:
+            continue
+        
+        # Calcular totales para este vendedor
+        total_billed = 0.0
+        total_cost = 0.0
+        
+        for order in orders:
+            # Facturado
+            charges = Charge.query.filter(
+                Charge.order_id == order.id,
+                Charge.status != 'cancelled'
+            ).all()
+            
+            for charge in charges:
+                qty = charge.charged_qty if charge.charged_qty is not None else (charge.qty or 0)
+                total_billed += qty * (charge.unit_price or 0)
+            
+            # Costos
+            purchases = Purchase.query.filter_by(order_id=order.id).all()
+            for purchase in purchases:
+                if purchase.price_total:
+                    total_cost += purchase.price_total
+        
+        # Calcular utilidad y comisiones
+        profit = max(0.0, total_billed - total_cost)
+        vendor_commission = profit * vendor.commission_rate
+        kivi_amount = profit - vendor_commission
+        
+        result.append({
+            "vendor_id": vendor.id,
+            "vendor_name": vendor.name,
+            "vendor_email": vendor.email,
+            "commission_rate": vendor.commission_rate,
+            "num_orders": len(orders),
+            "total_billed": round(total_billed, 2),
+            "total_cost": round(total_cost, 2),
+            "total_profit": round(profit, 2),
+            "vendor_commission": round(vendor_commission, 2),
+            "kivi_amount": round(kivi_amount, 2)
+        })
+    
+    # Ordenar por comisión descendente
+    result.sort(key=lambda x: x['vendor_commission'], reverse=True)
+    
+    return jsonify(result)
+
+
 @accounting_bp.get("/accounting/customers")
+@require_token
 def customers_summary():
     """
     Resumen de contabilidad por cliente.

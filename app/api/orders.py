@@ -23,20 +23,41 @@ def _score_name(query: str, name: str) -> int:
     return similarity_score(query, name)
 
 
-def _get_draft(create: bool = False) -> Optional[Order]:
-    draft = Order.query.filter_by(status="draft").order_by(Order.created_at.desc()).first()
+def _get_draft(create: bool = False, user=None) -> Optional[Order]:
+    """Obtiene o crea el borrador del usuario actual"""
+    query = Order.query.filter_by(status="draft")
+    
+    # Si es vendedor, solo su borrador
+    if user and user.role == 'vendor':
+        query = query.filter_by(vendor_id=user.id)
+    
+    draft = query.order_by(Order.created_at.desc()).first()
     if draft or not create:
         return draft
-    draft = Order(status="draft")
-    db.session.add(draft); db.session.flush()
+    
+    # Crear nuevo borrador
+    vendor_id = user.id if (user and user.role == 'vendor') else None
+    draft = Order(status="draft", vendor_id=vendor_id)
+    db.session.add(draft)
+    db.session.flush()
     draft.title = f"Pedido Nro {draft.id} - {date.today().isoformat()}"
     db.session.commit()
     return draft
 
 
 @orders_bp.get("/orders")
+@require_token
 def list_orders():
-    items = Order.query.order_by(Order.created_at.desc()).limit(100).all()
+    """Lista órdenes. Los vendedores solo ven sus propias órdenes."""
+    user = getattr(request, 'current_user', None)
+    
+    query = Order.query
+    
+    # Si es vendedor, filtrar solo sus órdenes
+    if user and user.role == 'vendor':
+        query = query.filter(Order.vendor_id == user.id)
+    
+    items = query.order_by(Order.created_at.desc()).limit(100).all()
     return jsonify([o.to_dict() for o in items])
 
 
@@ -137,14 +158,18 @@ def order_detail(order_id: int):
 
 
 @orders_bp.get("/orders/draft")
+@require_token
 def get_draft():
-    d = _get_draft(create=True)
+    user = getattr(request, 'current_user', None)
+    d = _get_draft(create=True, user=user)
     return jsonify(d.to_dict())
 
 
 @orders_bp.get("/orders/draft/detail")
+@require_token
 def draft_detail():
-    d = _get_draft(create=True)
+    user = getattr(request, 'current_user', None)
+    d = _get_draft(create=True, user=user)
     return order_detail(d.id)
 
 
@@ -253,7 +278,8 @@ def _add_items(order: Order, items: list[dict]) -> None:
 @orders_bp.post("/orders/draft/items")
 @require_token
 def add_items_to_current_draft():
-    d = _get_draft(create=True)
+    user = getattr(request, 'current_user', None)
+    d = _get_draft(create=True, user=user)
     data = request.get_json(silent=True) or {}; items = data.get("items") or []
     inserted = 0
     skipped = []
@@ -308,7 +334,8 @@ def add_items_to_current_draft():
 @orders_bp.post("/orders/draft/confirm")
 @require_token
 def confirm_current_draft():
-    d = _get_draft(create=True)
+    user = getattr(request, 'current_user', None)
+    d = _get_draft(create=True, user=user)
     # Generar cargos si aún no existen para este pedido
     existing = Charge.query.filter(Charge.order_id == d.id).first()
     if not existing:
@@ -360,11 +387,32 @@ def confirm_current_draft():
 @orders_bp.post("/orders")
 @require_token
 def create_order():
-    data = request.get_json(silent=True) or {}; items = data.get("items") or []
+    """Crea una orden. Los vendedores automáticamente la asignan a sí mismos."""
+    user = getattr(request, 'current_user', None)
+    
+    data = request.get_json(silent=True) or {}
+    items = data.get("items") or []
     notes = data.get("notes")
-    order = Order(notes=notes, status="emitido"); db.session.add(order); db.session.flush()
-    _add_items(order, items); db.session.commit()
-    order.title = f"Pedido Nro {order.id} - {date.today().isoformat()}"; db.session.commit()
+    
+    # Determinar vendor_id
+    vendor_id = data.get("vendor_id")
+    if user and user.role == 'vendor':
+        # Los vendedores solo pueden crear órdenes asignadas a ellos mismos
+        vendor_id = user.id
+    elif vendor_id:
+        # Los admins pueden especificar un vendor_id
+        vendor_id = int(vendor_id)
+    else:
+        # Admin puede dejar sin asignar (None)
+        vendor_id = None
+    
+    order = Order(notes=notes, status="emitido", vendor_id=vendor_id)
+    db.session.add(order)
+    db.session.flush()
+    _add_items(order, items)
+    db.session.commit()
+    order.title = f"Pedido Nro {order.id} - {date.today().isoformat()}"
+    db.session.commit()
     return jsonify(order.to_dict()), 201
 
 
