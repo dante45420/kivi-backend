@@ -547,6 +547,52 @@ def debug_excess():
     })
 
 
+@accounting_bp.get("/accounting/debug/orders")
+def debug_orders():
+    """
+    Debug simple para ver todos los pedidos y sus items
+    """
+    orders = Order.query.order_by(Order.created_at.desc()).limit(10).all()
+    result = []
+    
+    for order in orders:
+        items = OrderItem.query.filter_by(order_id=order.id).all()
+        purchases = Purchase.query.filter_by(order_id=order.id).all()
+        
+        order_debug = {
+            "order_id": order.id,
+            "order_title": order.title,
+            "order_status": order.status,
+            "items_count": len(items),
+            "purchases_count": len(purchases),
+            "items": [],
+            "purchases": []
+        }
+        
+        for item in items:
+            order_debug["items"].append({
+                "id": item.id,
+                "product_id": item.product_id,
+                "qty": item.qty,
+                "unit": item.unit,
+                "charged_qty": item.charged_qty,
+                "charged_unit": item.charged_unit
+            })
+        
+        for purchase in purchases:
+            order_debug["purchases"].append({
+                "id": purchase.id,
+                "product_id": purchase.product_id,
+                "qty_kg": purchase.qty_kg,
+                "qty_unit": purchase.qty_unit,
+                "charged_unit": purchase.charged_unit
+            })
+        
+        result.append(order_debug)
+    
+    return jsonify(result)
+
+
 @accounting_bp.get("/accounting/vendors/commissions")
 @require_token
 def vendors_commissions_summary():
