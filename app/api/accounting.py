@@ -9,6 +9,7 @@ from ..models.order_item import OrderItem
 from ..models.purchase import Purchase
 from ..models.variant import VariantPriceTier
 from ..models.catalog_price import CatalogPrice
+from .auth import require_token
 
 
 accounting_bp = Blueprint("accounting", __name__)
