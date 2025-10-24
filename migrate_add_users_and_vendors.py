@@ -93,14 +93,29 @@ def migrate():
                     name="Admin Kivi",
                     role="admin",
                     active=True,
-                    commission_rate=1.0  # Admin no tiene comisión
+                    commission_rate=0.50  # Admin se queda con 50% de la ganancia (logística y compras)
                 )
                 admin.set_password("Dante454@")
                 db.session.add(admin)
                 db.session.commit()
                 print(f"   ✓ Usuario admin creado (ID: {admin.id})")
             else:
-                print(f"   ℹ️ Usuario admin ya existe (ID: {admin.id})")
+                # Actualizar comisión del admin si ya existe
+                if admin.commission_rate != 0.50:
+                    admin.commission_rate = 0.50
+                    db.session.commit()
+                    print(f"   ✓ Admin ya existe, comisión actualizada a 50% (ID: {admin.id})")
+                else:
+                    print(f"   ℹ️ Usuario admin ya existe (ID: {admin.id})")
+            
+            # Actualizar comisión de vendedores existentes a 50% si tienen 75%
+            vendors = User.query.filter_by(role='vendor').all()
+            if vendors:
+                for vendor in vendors:
+                    if vendor.commission_rate == 0.75:
+                        vendor.commission_rate = 0.50
+                        db.session.commit()
+                        print(f"   ✓ Comisión de {vendor.name} actualizada de 75% a 50%")
         except Exception as e:
             print(f"   ⚠️ Error creando usuario admin: {e}")
             db.session.rollback()
@@ -110,6 +125,7 @@ def migrate():
         print("   - Los clientes y pedidos existentes no tienen vendor_id asignado (NULL)")
         print("   - Puedes asignar vendedores manualmente o desde la interfaz")
         print("   - Usuario admin: danteparodiwerth@gmail.com / Dante454@")
+        print("   - Comisión por defecto para vendedores: 50% (el otro 50% es para admin)")
 
 
 if __name__ == "__main__":

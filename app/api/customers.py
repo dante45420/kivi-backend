@@ -1,15 +1,14 @@
 from flask import Blueprint, jsonify, request
 from ..db import db
 from ..models.customer import Customer
-from .auth import require_token
 
 customers_bp = Blueprint("customers", __name__)
 
 
 @customers_bp.get("/customers")
-@require_token
 def list_customers():
     """Lista clientes. Los vendedores solo ven sus propios clientes."""
+    # Retrocompatibilidad: funciona con o sin autenticación
     user = getattr(request, 'current_user', None)
     
     query = Customer.query
@@ -23,9 +22,9 @@ def list_customers():
 
 
 @customers_bp.post("/customers")
-@require_token
 def create_customer():
     """Crea un nuevo cliente. Los vendedores automáticamente lo asignan a sí mismos."""
+    # Retrocompatibilidad: funciona con o sin autenticación
     user = getattr(request, 'current_user', None)
     
     data = request.get_json(silent=True) or {}

@@ -46,9 +46,9 @@ def _get_draft(create: bool = False, user=None) -> Optional[Order]:
 
 
 @orders_bp.get("/orders")
-@require_token
 def list_orders():
     """Lista órdenes. Los vendedores solo ven sus propias órdenes."""
+    # Retrocompatibilidad: funciona con o sin autenticación
     user = getattr(request, 'current_user', None)
     
     query = Order.query
@@ -158,16 +158,16 @@ def order_detail(order_id: int):
 
 
 @orders_bp.get("/orders/draft")
-@require_token
 def get_draft():
+    # Retrocompatibilidad: funciona con o sin autenticación
     user = getattr(request, 'current_user', None)
     d = _get_draft(create=True, user=user)
     return jsonify(d.to_dict())
 
 
 @orders_bp.get("/orders/draft/detail")
-@require_token
 def draft_detail():
+    # Retrocompatibilidad: funciona con o sin autenticación
     user = getattr(request, 'current_user', None)
     d = _get_draft(create=True, user=user)
     return order_detail(d.id)

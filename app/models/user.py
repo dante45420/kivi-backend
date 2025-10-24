@@ -16,8 +16,8 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Comisión del vendedor (% de la utilidad que se queda el vendedor)
-    # Por defecto 75% para vendedores, 100% para admin (no aplica)
-    commission_rate = db.Column(db.Float, nullable=False, default=0.75)
+    # Por defecto 50% para vendedores (el otro 50% es para admin por logística y compras)
+    commission_rate = db.Column(db.Float, nullable=False, default=0.50)
 
     def set_password(self, password: str):
         """Genera el hash de la contraseña"""

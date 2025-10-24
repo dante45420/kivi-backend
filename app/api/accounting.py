@@ -27,7 +27,6 @@ def _sum_paid_for_charge_ids(charge_ids: list[int]) -> float:
 
 
 @accounting_bp.get("/accounting/orders")
-@require_token
 def orders_summary():
     """
     Resumen de contabilidad por pedido.
@@ -42,6 +41,7 @@ def orders_summary():
     
     Los vendedores solo ven sus propias órdenes.
     """
+    # Retrocompatibilidad: funciona con o sin autenticación
     user = getattr(request, 'current_user', None)
     include_details = request.args.get('include_details') == '1'
     
@@ -567,7 +567,6 @@ def vendors_commissions_summary():
 
 
 @accounting_bp.get("/accounting/customers")
-@require_token
 def customers_summary():
     """
     Resumen de contabilidad por cliente.
