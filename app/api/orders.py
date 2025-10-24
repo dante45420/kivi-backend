@@ -248,7 +248,7 @@ def _create_product_with_kivi(product_name: str, sale_price: float, default_unit
     return product
 
 
-def _add_items(order: Order, items: list[dict]) -> None:
+def _add_items(order: Order, items: list[dict], user=None) -> None:
     for it in items:
         customer_name = (it.get("customer") or "").strip()
         product_id = it.get("product_id"); product_name = (it.get("product") or "").strip(); variant_id = it.get("variant_id")
@@ -258,7 +258,9 @@ def _add_items(order: Order, items: list[dict]) -> None:
         if not customer_name: continue
         customer = Customer.query.filter_by(name=customer_name).first()
         if not customer:
-            customer = Customer(name=customer_name); db.session.add(customer); db.session.flush()
+            # Si es vendedor, asignar automáticamente el cliente a él
+            vendor_id = order.vendor_id if order.vendor_id else (user.id if user and user.role == 'vendor' else None)
+            customer = Customer(name=customer_name, vendor_id=vendor_id); db.session.add(customer); db.session.flush()
         product = Product.query.get(product_id) if product_id else Product.query.filter(Product.name.ilike(product_name)).first()
         if not product and create_if_missing and product_name:
             # Requiere precio de venta inicial
@@ -291,7 +293,9 @@ def add_items_to_current_draft():
             continue
         customer = Customer.query.filter_by(name=customer_name).first()
         if not customer:
-            customer = Customer(name=customer_name); db.session.add(customer); db.session.flush()
+            # Si el draft tiene vendor_id, asignar automáticamente el cliente a ese vendedor
+            vendor_id = d.vendor_id if d.vendor_id else (user.id if user and user.role == 'vendor' else None)
+            customer = Customer(name=customer_name, vendor_id=vendor_id); db.session.add(customer); db.session.flush()
 
         product_id = it.get("product_id"); product_name = (it.get("product") or "").strip(); variant_id = it.get("variant_id"); sale_unit_price = it.get("sale_unit_price")
         create_if_missing = bool(it.get("create_if_missing"))
@@ -409,7 +413,7 @@ def create_order():
     order = Order(notes=notes, status="emitido", vendor_id=vendor_id)
     db.session.add(order)
     db.session.flush()
-    _add_items(order, items)
+    _add_items(order, items, user)
     db.session.commit()
     order.title = f"Pedido Nro {order.id} - {date.today().isoformat()}"
     db.session.commit()
@@ -420,6 +424,7 @@ def create_order():
 @require_token
 def add_items_to_order(order_id: int):
     """Agregar items a un pedido existente (incluso si está emitido)"""
+    user = getattr(request, 'current_user', None)
     order = Order.query.get_or_404(order_id)
     data = request.get_json(silent=True) or {}
     items = data.get("items") or []
@@ -437,7 +442,9 @@ def add_items_to_order(order_id: int):
             
         customer = Customer.query.filter_by(name=customer_name).first()
         if not customer:
-            customer = Customer(name=customer_name)
+            # Si el pedido tiene vendor_id, asignar automáticamente el cliente a ese vendedor
+            vendor_id = order.vendor_id if order.vendor_id else (user.id if user and user.role == 'vendor' else None)
+            customer = Customer(name=customer_name, vendor_id=vendor_id)
             db.session.add(customer)
             db.session.flush()
         

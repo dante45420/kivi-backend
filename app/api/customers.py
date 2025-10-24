@@ -35,7 +35,7 @@ def create_customer():
     
     # Determinar vendor_id
     vendor_id = data.get("vendor_id")
-    if user.role == 'vendor':
+    if user and user.role == 'vendor':
         # Los vendedores solo pueden crear clientes asignados a ellos mismos
         vendor_id = user.id
     elif vendor_id:
