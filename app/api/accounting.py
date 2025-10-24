@@ -466,6 +466,87 @@ def calculate_excess():
     return jsonify(result)
 
 
+@accounting_bp.get("/accounting/excess/debug")
+def debug_excess():
+    """
+    Debug del cálculo de excedentes para ver exactamente qué está pasando
+    """
+    order_id = request.args.get('order_id')
+    if not order_id:
+        return jsonify({"error": "order_id requerido"}), 400
+    
+    order = Order.query.get(int(order_id))
+    if not order:
+        return jsonify({"error": "Pedido no encontrado"}), 404
+    
+    # Obtener items y compras del pedido
+    items = OrderItem.query.filter_by(order_id=order.id).all()
+    purchases = Purchase.query.filter_by(order_id=order.id).all()
+    
+    # Debug de items
+    items_debug = []
+    for item in items:
+        items_debug.append({
+            "id": item.id,
+            "product_id": item.product_id,
+            "qty": item.qty,
+            "unit": item.unit,
+            "charged_qty": item.charged_qty,
+            "charged_unit": item.charged_unit,
+            "customer_id": item.customer_id
+        })
+    
+    # Debug de compras
+    purchases_debug = []
+    for purchase in purchases:
+        purchases_debug.append({
+            "id": purchase.id,
+            "product_id": purchase.product_id,
+            "qty_kg": purchase.qty_kg,
+            "qty_unit": purchase.qty_unit,
+            "eq_qty_kg": purchase.eq_qty_kg,
+            "eq_qty_unit": purchase.eq_qty_unit,
+            "charged_unit": purchase.charged_unit
+        })
+    
+    # Agrupar lo pedido
+    needed_by_product = {}
+    for item in items:
+        pid = item.product_id
+        charged_unit = item.charged_unit or item.unit or "kg"
+        charged_qty = item.charged_qty if item.charged_qty is not None else float(item.qty or 0.0)
+        
+        if pid not in needed_by_product:
+            needed_by_product[pid] = {"unit": charged_unit, "qty": 0.0}
+        needed_by_product[pid]["qty"] += charged_qty
+    
+    # Agrupar lo comprado
+    purchased_by_product = {}
+    for purchase in purchases:
+        pid = purchase.product_id
+        charged_unit = purchase.charged_unit or "kg"
+        
+        if pid not in purchased_by_product:
+            purchased_by_product[pid] = {"unit": charged_unit, "qty": 0.0}
+        
+        if charged_unit == "kg":
+            purchased_by_product[pid]["qty"] += float(purchase.qty_kg or 0.0)
+            if purchase.eq_qty_kg:
+                purchased_by_product[pid]["qty"] += float(purchase.eq_qty_kg or 0.0)
+        else:  # unit
+            purchased_by_product[pid]["qty"] += float(purchase.qty_unit or 0.0)
+            if purchase.eq_qty_unit:
+                purchased_by_product[pid]["qty"] += float(purchase.eq_qty_unit or 0.0)
+    
+    return jsonify({
+        "order": order.to_dict(),
+        "items": items_debug,
+        "purchases": purchases_debug,
+        "needed_by_product": needed_by_product,
+        "purchased_by_product": purchased_by_product
+    })
+
+
 @accounting_bp.get("/accounting/vendors/commissions")
 @require_token
 def vendors_commissions_summary():
