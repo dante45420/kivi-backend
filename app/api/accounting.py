@@ -368,7 +368,7 @@ def update_charge_quantity(charge_id):
 @accounting_bp.get("/accounting/excess")
 def calculate_excess():
     """
-    Calcular excedentes reales: diferencia entre lo comprado, lo pedido y lo reasignado
+    Calcular excedentes simples: diferencia entre lo comprado y lo pedido
     (en la unidad de cobro, con conversiones aplicadas)
     """
     orders = Order.query.order_by(Order.created_at.desc()).limit(50).all()
@@ -382,12 +382,10 @@ def calculate_excess():
         if not purchases:
             continue
         
-        # Agrupar lo pedido por producto en la unidad de cobro (charged_unit)
-        # charged_qty ya tiene la conversión aplicada
+        # Agrupar lo pedido por producto en la unidad de cobro
         needed_by_product = {}
         for item in items:
             pid = item.product_id
-            # Usar charged_unit y charged_qty que ya tienen la conversión aplicada
             charged_unit = item.charged_unit or item.unit or "kg"
             charged_qty = item.charged_qty if item.charged_qty is not None else float(item.qty or 0.0)
             
@@ -407,45 +405,22 @@ def calculate_excess():
             # Sumar la cantidad comprada en la unidad de cobro
             if charged_unit == "kg":
                 purchased_by_product[pid]["qty"] += float(purchase.qty_kg or 0.0)
-                # Si hay conversión de unidades a kg
                 if purchase.eq_qty_kg:
                     purchased_by_product[pid]["qty"] += float(purchase.eq_qty_kg or 0.0)
             else:  # unit
                 purchased_by_product[pid]["qty"] += float(purchase.qty_unit or 0.0)
-                # Si hay conversión de kg a unidades
                 if purchase.eq_qty_unit:
                     purchased_by_product[pid]["qty"] += float(purchase.eq_qty_unit or 0.0)
         
-        # Agrupar lo reasignado (charges con original_order_id apuntando a este pedido)
-        # Estos son excedentes que ya fueron reasignados a otros clientes
-        from ..models.charge import Charge
-        reassigned_charges = Charge.query.filter(
-            Charge.original_order_id == o.id,
-            Charge.status != 'cancelled'  # No contar cancelados
-        ).all()
-        
-        reassigned_by_product = {}
-        for charge in reassigned_charges:
-            pid = charge.product_id
-            unit = charge.unit
-            qty = charge.charged_qty if charge.charged_qty is not None else float(charge.qty or 0.0)
-            
-            if pid not in reassigned_by_product:
-                reassigned_by_product[pid] = {"unit": unit, "qty": 0.0}
-            reassigned_by_product[pid]["qty"] += qty
-        
-        # Calcular excedentes: comprado - pedido - reasignado
+        # Calcular excedentes: comprado - pedido (simple)
         excesses = []
-        
-        # Primero, procesar todos los productos que se compraron
         for pid, purchased in purchased_by_product.items():
             needed = needed_by_product.get(pid, {"unit": purchased["unit"], "qty": 0.0})
-            reassigned = reassigned_by_product.get(pid, {"unit": purchased["unit"], "qty": 0.0})
             
-            # Excedente real = comprado - pedido - reasignado
-            excess_qty = purchased["qty"] - needed["qty"] - reassigned["qty"]
+            # Excedente simple = comprado - pedido
+            excess_qty = purchased["qty"] - needed["qty"]
             
-            if excess_qty > 0.01:  # Solo si hay excedente (con margen para errores de redondeo)
+            if excess_qty > 0.01:  # Solo si hay excedente
                 from ..models.product import Product
                 product = Product.query.get(pid)
                 excesses.append({
@@ -456,15 +431,8 @@ def calculate_excess():
                     "unit": purchased["unit"],
                     "needed_qty": round(needed["qty"], 2),
                     "purchased_qty": round(purchased["qty"], 2),
-                    "reassigned_qty": round(reassigned["qty"], 2)
+                    "reassigned_qty": 0.0  # Sin reasignaciones en el cálculo
                 })
-        
-        # También verificar productos que se pidieron pero no se compraron (no debería haber excedente)
-        # Pero por completitud, los incluimos con excedente 0
-        for pid, needed in needed_by_product.items():
-            if pid not in purchased_by_product:
-                # Se pidió pero no se compró - no hay excedente
-                continue
         
         if excesses:
             result.append({
