@@ -20,6 +20,7 @@ def capitalize_name(name: str) -> str:
 
 @products_bp.get("/products")
 def list_products():
+    from ..models.purchase import Purchase
     items = Product.query.order_by(Product.name.asc()).all()
     result = []
     for p in items:
@@ -30,6 +31,20 @@ def list_products():
             row["catalog"] = [{"sale_price": c.sale_price, "unit": c.unit, "date": (c.date.isoformat() if c.date else None)}]
         else:
             row["catalog"] = []
+        
+        # Adjuntar último costo registrado en compras
+        latest_purchase = Purchase.query.filter(
+            Purchase.product_id == p.id,
+            Purchase.price_per_unit.isnot(None)
+        ).order_by(Purchase.created_at.desc()).first()
+        
+        if latest_purchase:
+            row["latest_cost"] = latest_purchase.price_per_unit
+            row["latest_cost_unit"] = latest_purchase.charged_unit
+        else:
+            row["latest_cost"] = None
+            row["latest_cost_unit"] = None
+        
         result.append(row)
     return jsonify(result)
 

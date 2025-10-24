@@ -102,14 +102,27 @@ def order_detail(order_id: int):
         })
 
     # compras acumuladas por producto y unidad
+    # Usar charged_unit para determinar en qué unidad se compró
     purchases = Purchase.query.filter_by(order_id=order_id).all()
     purchased_by_product = {}
     for p in purchases:
         d = purchased_by_product.setdefault(p.product_id, {"kg": 0.0, "unit": 0.0, "g": 0.0})
-        if p.qty_kg:
-            d["kg"] += p.qty_kg
-        if getattr(p, "qty_unit", None):
-            d["unit"] += p.qty_unit or 0.0
+        charged_unit = p.charged_unit or "kg"
+        
+        if charged_unit == "kg":
+            # Se cobra en kg: sumar qty_kg directamente
+            if p.qty_kg:
+                d["kg"] += p.qty_kg
+            # Si hay unidades compradas, sumarlas convertidas a kg (usando eq_qty_kg)
+            if p.qty_unit and p.eq_qty_kg:
+                d["kg"] += p.eq_qty_kg
+        elif charged_unit == "unit":
+            # Se cobra en unidades: sumar qty_unit directamente
+            if p.qty_unit:
+                d["unit"] += p.qty_unit
+            # Si hay kg comprados, sumarlos convertidos a unidades (usando eq_qty_unit)
+            if p.qty_kg and p.eq_qty_unit:
+                d["unit"] += p.eq_qty_unit
 
     return jsonify({
         "order": order.to_dict(),

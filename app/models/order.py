@@ -11,6 +11,7 @@ class Order(db.Model):
     notes = db.Column(db.Text, nullable=True)
     title = db.Column(db.String(160), nullable=True)
     status = db.Column(db.String(20), nullable=False, default="draft")
+    vendor_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
 
     def to_dict(self) -> dict:
         return {
@@ -19,4 +20,5 @@ class Order(db.Model):
             "notes": self.notes,
             "title": self.title,
             "status": self.status,
+            "vendor_id": self.vendor_id,
         }
