@@ -22,6 +22,7 @@ python migrate_add_category.py 2>/dev/null || echo "Migración ya aplicada o err
 python migrate_add_original_order_id.py 2>/dev/null || echo "Migración ya aplicada o error menor"
 python migrate_add_merchant_system.py 2>/dev/null || echo "Migración ya aplicada o error menor"
 python migrate_add_users_and_vendors.py 2>/dev/null || echo "Migración ya aplicada o error menor"
+python migrate_add_vendor_system.py 2>/dev/null || echo "Migración ya aplicada o error menor"
 
 echo "Creando usuario comerciante de prueba..."
 python migrate_create_test_merchant.py 2>/dev/null || echo "Usuario ya existe o error menor"
