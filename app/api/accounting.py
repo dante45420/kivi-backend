@@ -602,6 +602,83 @@ def debug_orders():
     return jsonify(result)
 
 
+@accounting_bp.get("/accounting/excess/simple")
+def calculate_excess_simple():
+    """
+    Calcular excedentes simples: solo diferencia entre lo comprado y lo pedido
+    (sin considerar reasignaciones)
+    """
+    orders = Order.query.order_by(Order.created_at.desc()).limit(50).all()
+    result = []
+    
+    for o in orders:
+        # Obtener items y compras del pedido
+        items = OrderItem.query.filter_by(order_id=o.id).all()
+        purchases = Purchase.query.filter_by(order_id=o.id).all()
+        
+        if not purchases:
+            continue
+        
+        # Agrupar lo pedido por producto
+        needed_by_product = {}
+        for item in items:
+            pid = item.product_id
+            charged_unit = item.charged_unit or item.unit or "kg"
+            charged_qty = item.charged_qty if item.charged_qty is not None else float(item.qty or 0.0)
+            
+            if pid not in needed_by_product:
+                needed_by_product[pid] = {"unit": charged_unit, "qty": 0.0}
+            needed_by_product[pid]["qty"] += charged_qty
+        
+        # Agrupar lo comprado por producto
+        purchased_by_product = {}
+        for purchase in purchases:
+            pid = purchase.product_id
+            charged_unit = purchase.charged_unit or "kg"
+            
+            if pid not in purchased_by_product:
+                purchased_by_product[pid] = {"unit": charged_unit, "qty": 0.0}
+            
+            if charged_unit == "kg":
+                purchased_by_product[pid]["qty"] += float(purchase.qty_kg or 0.0)
+                if purchase.eq_qty_kg:
+                    purchased_by_product[pid]["qty"] += float(purchase.eq_qty_kg or 0.0)
+            else:  # unit
+                purchased_by_product[pid]["qty"] += float(purchase.qty_unit or 0.0)
+                if purchase.eq_qty_unit:
+                    purchased_by_product[pid]["qty"] += float(purchase.eq_qty_unit or 0.0)
+        
+        # Calcular excedentes: comprado - pedido (sin reasignaciones)
+        excesses = []
+        for pid, purchased in purchased_by_product.items():
+            needed = needed_by_product.get(pid, {"unit": purchased["unit"], "qty": 0.0})
+            
+            # Excedente simple = comprado - pedido
+            excess_qty = purchased["qty"] - needed["qty"]
+            
+            if excess_qty > 0.01:  # Solo si hay excedente
+                from ..models.product import Product
+                product = Product.query.get(pid)
+                excesses.append({
+                    "order_id": o.id,
+                    "product_id": pid,
+                    "product_name": product.name if product else f"Producto #{pid}",
+                    "excess_qty": round(excess_qty, 2),
+                    "unit": purchased["unit"],
+                    "needed_qty": round(needed["qty"], 2),
+                    "purchased_qty": round(purchased["qty"], 2),
+                    "reassigned_qty": 0.0  # Sin reasignaciones
+                })
+        
+        if excesses:
+            result.append({
+                "order": o.to_dict(),
+                "excesses": excesses
+            })
+    
+    return jsonify(result)
+
+
 @accounting_bp.get("/accounting/excess/test")
 def test_excess_calculation():
     """
