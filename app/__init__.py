@@ -55,6 +55,7 @@ def create_app() -> Flask:
         from .api.payments import payments_bp
         from .api.variants import variants_bp
         from .api.accounting import accounting_bp
+        from .api.admin_kpis import admin_kpis_bp
         app.register_blueprint(auth_bp, url_prefix="/api")
         app.register_blueprint(products_bp, url_prefix="/api")
         app.register_blueprint(backup_bp, url_prefix="/api")
@@ -65,6 +66,7 @@ def create_app() -> Flask:
         app.register_blueprint(payments_bp, url_prefix="/api")
         app.register_blueprint(variants_bp, url_prefix="/api")
         app.register_blueprint(accounting_bp, url_prefix="/api")
+        app.register_blueprint(admin_kpis_bp, url_prefix="/api")
 
     # CLI
     from .cli import register_cli

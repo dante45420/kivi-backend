@@ -59,3 +59,41 @@ def create_customer():
     db.session.add(c)
     db.session.commit()
     return jsonify(c.to_dict()), 201
+
+
+@customers_bp.patch("/customers/<int:customer_id>")
+def update_customer(customer_id):
+    """Actualiza un cliente existente."""
+    data = request.get_json(silent=True) or {}
+    
+    customer = Customer.query.get_or_404(customer_id)
+    
+    # Actualizar campos permitidos
+    if "name" in data:
+        customer.name = data["name"].strip() if data["name"] else None
+    if "phone" in data:
+        customer.phone = data["phone"].strip() if data["phone"] else None
+    if "rut" in data:
+        customer.rut = data["rut"].strip() if data["rut"] else None
+    if "nickname" in data:
+        customer.nickname = data["nickname"].strip() if data["nickname"] else None
+    if "preferences" in data:
+        customer.preferences = data["preferences"].strip() if data["preferences"] else None
+    if "personality" in data:
+        customer.personality = data["personality"].strip() if data["personality"] else None
+    if "address" in data:
+        customer.address = data["address"].strip() if data["address"] else None
+    if "email" in data:
+        customer.email = data["email"].strip() if data["email"] else None
+    
+    db.session.commit()
+    return jsonify(customer.to_dict())
+
+
+@customers_bp.delete("/customers/<int:customer_id>")
+def delete_customer(customer_id):
+    """Elimina un cliente."""
+    customer = Customer.query.get_or_404(customer_id)
+    db.session.delete(customer)
+    db.session.commit()
+    return jsonify({"message": "Cliente eliminado correctamente"}), 200
