@@ -440,6 +440,50 @@ def calculate_excess():
                 "excesses": excesses
             })
     
+    # Obtener compras SIN order_id (compras de excedente que no corresponden a un pedido)
+    orphan_purchases = Purchase.query.filter(Purchase.order_id.is_(None)).all()
+    
+    # Agrupar por producto
+    if orphan_purchases:
+        orphan_by_product = {}
+        for purchase in orphan_purchases:
+            pid = purchase.product_id
+            charged_unit = purchase.charged_unit or "kg"
+            
+            if pid not in orphan_by_product:
+                orphan_by_product[pid] = {"unit": charged_unit, "qty": 0.0}
+            
+            if charged_unit == "kg":
+                orphan_by_product[pid]["qty"] += float(purchase.qty_kg or 0.0)
+                if purchase.eq_qty_kg:
+                    orphan_by_product[pid]["qty"] += float(purchase.eq_qty_kg or 0.0)
+            else:  # unit
+                orphan_by_product[pid]["qty"] += float(purchase.qty_unit or 0.0)
+                if purchase.eq_qty_unit:
+                    orphan_by_product[pid]["qty"] += float(purchase.eq_qty_unit or 0.0)
+        
+        # Crear una entrada especial para excedentes sin pedido
+        orphan_excesses = []
+        for pid, purchased in orphan_by_product.items():
+            from ..models.product import Product
+            product = Product.query.get(pid)
+            orphan_excesses.append({
+                "order_id": None,
+                "product_id": pid,
+                "product_name": product.name if product else f"Producto #{pid}",
+                "excess_qty": round(purchased["qty"], 2),
+                "unit": purchased["unit"],
+                "needed_qty": 0.0,
+                "purchased_qty": round(purchased["qty"], 2),
+                "reassigned_qty": 0.0
+            })
+        
+        if orphan_excesses:
+            result.append({
+                "order": {"id": None, "title": "Excedentes sin pedido", "status": "excedentes"},
+                "excesses": orphan_excesses
+            })
+    
     return jsonify(result)
 
 
