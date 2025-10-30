@@ -29,19 +29,52 @@ def list_charges():
 @require_token
 def create_charge():
     data = request.get_json(silent=True) or {}
+
+    # Datos base
+    customer_id = int(data.get("customer_id"))
+    order_id = data.get("order_id")
+    original_order_id = data.get("original_order_id")
+    order_item_id = data.get("order_item_id")
+    product_id = int(data.get("product_id"))
+    qty = float(data.get("qty") or 0)
+    unit = (data.get("unit") or "kg")
+    unit_price = float(data.get("unit_price") or 0)
+    discount_amount = float(data.get("discount_amount") or 0)
+    discount_reason = (data.get("discount_reason") or None)
+    status = (data.get("status") or "pending")
+
+    charged_qty = data.get("charged_qty")
+
+    # Si viene order_item_id, usar la conversión registrada en el OrderItem
+    try:
+        if order_item_id and charged_qty is None:
+            oi = OrderItem.query.get(order_item_id)
+            if oi:
+                # Tomar charged_qty y unidad de cobro del ítem si existen
+                if oi.charged_qty is not None:
+                    charged_qty = float(oi.charged_qty or 0.0)
+                unit = oi.charged_unit or oi.unit or unit
+    except Exception:
+        pass
+
+    # Calcular total consistente
+    qty_to_charge = float(charged_qty) if charged_qty is not None else float(qty or 0.0)
+    total = qty_to_charge * unit_price
+
     c = Charge(
-        customer_id=int(data.get("customer_id")),
-        order_id=data.get("order_id"),
-        original_order_id=data.get("original_order_id"),  # Para rastrear reasignaciones de excedente
-        order_item_id=data.get("order_item_id"),
-        product_id=int(data.get("product_id")),
-        qty=float(data.get("qty") or 0),
-        unit=(data.get("unit") or "kg"),
-        unit_price=float(data.get("unit_price") or 0),
-        discount_amount=float(data.get("discount_amount") or 0),
-        discount_reason=(data.get("discount_reason") or None),
-        total=float(data.get("total") or 0),
-        status=(data.get("status") or "pending"),
+        customer_id=customer_id,
+        order_id=order_id,
+        original_order_id=original_order_id,
+        order_item_id=order_item_id,
+        product_id=product_id,
+        qty=qty,
+        charged_qty=charged_qty,
+        unit=unit,
+        unit_price=unit_price,
+        discount_amount=discount_amount,
+        discount_reason=discount_reason,
+        total=total,
+        status=status,
     )
     db.session.add(c)
     db.session.commit()
