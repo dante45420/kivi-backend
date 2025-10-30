@@ -75,7 +75,19 @@ def orders_summary():
         
         for charge in charges:
             # Cantidad a cobrar
-            qty_to_bill = charge.charged_qty if charge.charged_qty is not None else float(charge.qty or 0.0)
+            qty_to_bill = charge.charged_qty if charge.charged_qty is not None else None
+            if qty_to_bill is None:
+                # Si no hay charged_qty en el cargo, intentar tomar la conversión desde el OrderItem
+                try:
+                    if charge.order_item_id:
+                        oi = OrderItem.query.get(charge.order_item_id)
+                        if oi and oi.charged_qty is not None:
+                            qty_to_bill = float(oi.charged_qty or 0.0)
+                except Exception:
+                    qty_to_bill = None
+            if qty_to_bill is None:
+                # Fallback final: usar la cantidad original del cargo (puede estar en unidad pedida)
+                qty_to_bill = float(charge.qty or 0.0)
             
             # Precio de venta por unidad
             unit_price = float(charge.unit_price or 0.0)
