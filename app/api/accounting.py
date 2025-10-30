@@ -318,6 +318,107 @@ def orders_summary():
             result.append(row)
     
     return jsonify(result)
+@accounting_bp.post("/accounting/recalc-conversions")
+def recalc_conversions():
+    """
+    Recalcular charged_qty/charged_unit para todos los OrderItems y Charges de un pedido
+    usando las equivalencias anotadas en las compras (eq_qty_kg, eq_qty_unit).
+
+    Parámetros:
+      - order_id: int (requerido) en querystring o JSON
+    """
+    order_id = request.args.get('order_id', type=int)
+    if not order_id and request.is_json:
+        body = request.get_json(silent=True) or {}
+        order_id = body.get('order_id')
+    if not order_id:
+        return jsonify({"error": "order_id requerido"}), 400
+
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "Pedido no encontrado"}), 404
+
+    # Ratios observados por producto
+    purchases = Purchase.query.filter_by(order_id=order_id).all()
+    ratios = {}
+    for p in purchases:
+        pid = p.product_id
+        charged_unit = p.charged_unit or 'kg'
+        units_per_kg = None
+        try:
+            if charged_unit == 'kg':
+                u = float(p.qty_unit or 0.0)
+                kg_eq = float(p.eq_qty_kg or 0.0) if p.eq_qty_kg is not None else 0.0
+                if u > 0 and kg_eq > 0:
+                    units_per_kg = u / kg_eq
+            else:
+                kg = float(p.qty_kg or 0.0)
+                u_eq = float(p.eq_qty_unit or 0.0) if p.eq_qty_unit is not None else 0.0
+                if kg > 0 and u_eq > 0:
+                    units_per_kg = u_eq / kg
+        except Exception:
+            pass
+
+        r = ratios.get(pid) or {}
+        # Mantener la primera equivalencia válida que encontremos
+        if units_per_kg and units_per_kg > 0 and not r.get('units_per_kg'):
+            r['units_per_kg'] = units_per_kg
+        # Registrar la unidad de cobro observada (última prevalece)
+        r['charged_unit'] = charged_unit
+        ratios[pid] = r
+
+    # Actualizar OrderItems
+    items = OrderItem.query.filter_by(order_id=order_id).all()
+    for it in items:
+        r = ratios.get(it.product_id)
+        if not r:
+            continue
+        charged_unit = r.get('charged_unit') or (it.charged_unit or it.unit or 'kg')
+        it.charged_unit = charged_unit
+        qty_original = float(it.qty or 0.0)
+        if (it.unit or 'kg') == charged_unit:
+            it.charged_qty = qty_original
+        else:
+            ratio = r.get('units_per_kg')
+            if ratio and ratio > 0:
+                if charged_unit == 'kg' and (it.unit or 'kg') == 'unit':
+                    it.charged_qty = qty_original / ratio
+                elif charged_unit == 'unit' and (it.unit or 'kg') == 'kg':
+                    it.charged_qty = qty_original * ratio
+                else:
+                    it.charged_qty = qty_original
+            else:
+                it.charged_qty = qty_original
+
+    db.session.flush()
+
+    # Actualizar Charges vinculados
+    for it in items:
+        try:
+            charges = Charge.query.filter(Charge.order_item_id == it.id).all()
+            for ch in charges:
+                ch.charged_qty = it.charged_qty
+                qty_to_charge = ch.charged_qty if ch.charged_qty is not None else float(ch.qty or 0.0)
+                ch.total = qty_to_charge * float(ch.unit_price or 0.0)
+        except Exception:
+            pass
+
+    db.session.commit()
+
+    return jsonify({
+        'order_id': order_id,
+        'ratios': ratios,
+        'items': [
+            {
+                'id': it.id,
+                'product_id': it.product_id,
+                'qty': it.qty,
+                'unit': it.unit,
+                'charged_qty': it.charged_qty,
+                'charged_unit': it.charged_unit
+            } for it in items
+        ]
+    })
 
 
 @accounting_bp.patch("/charges/<int:charge_id>/price")
