@@ -44,19 +44,18 @@ def create_payment():
         if amount <= 0:
             return jsonify({"error": "amount debe ser mayor que 0"}), 400
         
-        # order_id obligatorio para asociar el pago a un pedido específico
+        # order_id opcional: si no viene, se distribuirá automáticamente entre todos los pedidos con deuda
         try:
-            order_id = int(data.get("order_id"))
+            order_id = int(data.get("order_id")) if data.get("order_id") else None
         except Exception:
             order_id = None
-        if not order_id:
-            return jsonify({"error": "order_id es obligatorio"}), 400
         
-        # Validar que el pedido existe
-        from ..models.order import Order
-        order = Order.query.get(order_id)
-        if not order:
-            return jsonify({"error": f"Pedido con ID {order_id} no encontrado"}), 404
+        # Si se especifica order_id, validar que existe
+        if order_id:
+            from ..models.order import Order
+            order = Order.query.get(order_id)
+            if not order:
+                return jsonify({"error": f"Pedido con ID {order_id} no encontrado"}), 404
         
         # Parsear fecha si viene
         payment_date = None
@@ -80,7 +79,7 @@ def create_payment():
         db.session.add(p)
         db.session.flush()
         
-        # Aplicar a charges: si vienen apps explícitas, usarlas; si no, distribuir proporcional
+        # Aplicar a charges: si vienen apps explícitas, usarlas; si no, distribuir automáticamente
         apps = data.get("applications") or []
         if apps:
             for app in apps:
@@ -94,85 +93,193 @@ def create_payment():
                 if amt >= max(0.0, (ch.total or 0.0) - (ch.discount_amount or 0.0)):
                     ch.status = "paid"
         else:
-            # Distribución automática: por cliente y, si se especifica, por pedido
-            # Buscar charges pendientes del cliente en ese pedido
-            q = Charge.query.filter(
-                Charge.customer_id == p.customer_id, 
-                Charge.status == "pending", 
-                Charge.order_id == order_id
-            )
-            charges = q.all()
+            # Si viene distribution manual (monto por order_id), aplicarla primero
+            distribution = data.get("distribution") or {}  # { order_id: amount }
+            remaining = float(p.amount or 0.0)
             
-            # Si no hay charges pendientes, intentar buscar todos los charges del pedido y cliente (incluyendo paid)
-            if not charges:
-                charges = Charge.query.filter(
+            # Aplicar distribución manual primero
+            if distribution:
+                for ord_id_str, dist_amount in distribution.items():
+                    try:
+                        ord_id = int(ord_id_str)
+                        dist_amt = float(dist_amount or 0)
+                        if dist_amt <= 0:
+                            continue
+                        if dist_amt > remaining:
+                            dist_amt = remaining
+                        if dist_amt <= 0:
+                            continue
+                        
+                        # Buscar charges del pedido con deuda
+                        charges = Charge.query.filter(
+                            Charge.customer_id == p.customer_id,
+                            Charge.order_id == ord_id,
+                            Charge.status == "pending"
+                        ).all()
+                        
+                        if not charges:
+                            charges = Charge.query.filter(
+                                Charge.customer_id == p.customer_id,
+                                Charge.order_id == ord_id
+                            ).all()
+                        
+                        if charges:
+                            # Calcular deuda total del pedido
+                            total_order_due = 0.0
+                            due_by_charge = {}
+                            for ch in charges:
+                                due = max(0.0, (ch.total or 0.0) - (ch.discount_amount or 0.0))
+                                prev_apps = PaymentApplication.query.filter(PaymentApplication.charge_id == ch.id).all()
+                                paid_prev = sum(a.amount or 0.0 for a in prev_apps)
+                                due = max(0.0, due - paid_prev)
+                                if due > 0:
+                                    due_by_charge[ch.id] = due
+                                    total_order_due += due
+                            
+                            # Aplicar el monto asignado a este pedido
+                            if total_order_due > 0:
+                                to_apply = min(dist_amt, total_order_due)
+                                for ch_id, ch_due in due_by_charge.items():
+                                    if to_apply <= 0:
+                                        break
+                                    amt = min(to_apply, ch_due)
+                                    if amt > 0:
+                                        db.session.add(PaymentApplication(payment_id=p.id, charge_id=ch_id, amount=amt))
+                                        to_apply -= amt
+                                remaining -= dist_amt
+                    except Exception:
+                        continue
+            
+            # Si queda resto y no se especificó order_id, distribuir automáticamente del más antiguo al más nuevo
+            if remaining > 0 and not order_id:
+                from ..models.order import Order
+                # Obtener todos los pedidos con deuda del cliente, ordenados del más antiguo al más nuevo
+                all_charges = Charge.query.filter(
                     Charge.customer_id == p.customer_id,
-                    Charge.order_id == order_id
+                    Charge.status == "pending"
                 ).all()
-            
-            if not charges:
-                return jsonify({
-                    "error": f"No se encontraron cargos para el cliente '{customer.name}' en el pedido #{order_id}. Verifica que el cliente tenga items en este pedido."
-                }), 400
-            
-            # calcular deuda de cada charge
-            due_by_charge = {}
-            total_due = 0.0
-            for ch in charges:
-                due = max(0.0, (ch.total or 0.0) - (ch.discount_amount or 0.0))
-                # restar pagos previos
-                prev_apps = PaymentApplication.query.filter(PaymentApplication.charge_id == ch.id).all()
-                paid_prev = sum(a.amount or 0.0 for a in prev_apps)
-                due = max(0.0, due - paid_prev)
-                if due > 0:
-                    due_by_charge[ch.id] = due
-                    total_due += due
-            
-            if total_due == 0:
-                return jsonify({
-                    "error": f"El cliente '{customer.name}' no tiene deuda pendiente en el pedido #{order_id}. La deuda ya está pagada completamente."
-                }), 400
-            
-            remaining = int(round(float(p.amount or 0.0)))
-            if total_due > 0 and remaining > 0:
-                # proporcional entero: primero parte entera por piso, luego repartir remanente por mayor residuo
-                shares = []  # (charge_id, share_int, remainder)
-                distributed = 0
-                for ch in charges:
-                    due = due_by_charge.get(ch.id, 0.0)
-                    if due <= 0:
-                        continue
-                    raw = (remaining * (due / total_due))
-                    share_int = int(raw // 1)
-                    remainder = float(raw - share_int)
-                    shares.append((ch.id, share_int, remainder))
-                    distributed += share_int
-                leftover = max(0, remaining - distributed)
-                shares.sort(key=lambda t: t[2], reverse=True)
-                idx = 0
-                while leftover > 0 and idx < len(shares):
-                    cid, s_int, rem = shares[idx]
-                    # no exceder la deuda
-                    max_add = int(max(0.0, due_by_charge.get(cid, 0.0) - s_int))
-                    if max_add > 0:
-                        add = 1
-                        shares[idx] = (cid, s_int + add, rem)
-                        leftover -= add
-                    idx = (idx + 1) if idx + 1 < len(shares) else 0
-                    # evitar bucles infinitos si no hay espacio
-                    if all(due_by_charge.get(cid,0.0) <= s for cid, s, _ in shares):
+                
+                # Agrupar por order_id y calcular deuda por pedido
+                orders_due = {}  # { order_id: { due, order } }
+                for ch in all_charges:
+                    if ch.order_id not in orders_due:
+                        ord_obj = Order.query.get(ch.order_id) if ch.order_id else None
+                        orders_due[ch.order_id] = {"due": 0.0, "order": ord_obj, "charges": []}
+                    orders_due[ch.order_id]["charges"].append(ch)
+                
+                # Calcular deuda por pedido
+                for ord_id, data_dict in orders_due.items():
+                    total_due = 0.0
+                    for ch in data_dict["charges"]:
+                        due = max(0.0, (ch.total or 0.0) - (ch.discount_amount or 0.0))
+                        prev_apps = PaymentApplication.query.filter(PaymentApplication.charge_id == ch.id).all()
+                        paid_prev = sum(a.amount or 0.0 for a in prev_apps)
+                        due = max(0.0, due - paid_prev)
+                        if due > 0:
+                            total_due += due
+                    data_dict["due"] = total_due
+                
+                # Filtrar pedidos con deuda y ordenar del más antiguo al más nuevo (por id ascendente)
+                orders_with_due = [(oid, data) for oid, data in orders_due.items() if data["due"] > 0]
+                orders_with_due.sort(key=lambda x: x[0] or 0)  # Ordenar por order_id ascendente (más antiguo primero)
+                
+                # Distribuir del más antiguo al más nuevo, pagando completamente cada uno antes de pasar al siguiente
+                for ord_id, order_data in orders_with_due:
+                    if remaining <= 0:
                         break
-                # persistir aplicaciones
-                for cid, s_int, _ in shares:
-                    if s_int <= 0:
-                        continue
-                    amt = min(float(due_by_charge.get(cid, 0.0)), float(s_int))
-                    if amt <= 0:
-                        continue
-                    db.session.add(PaymentApplication(payment_id=p.id, charge_id=cid, amount=amt))
-            # actualizar estados pagados
-            for ch in charges:
-                # recomputar saldo
+                    
+                    order_due = order_data["due"]
+                    to_pay = min(remaining, order_due)
+                    
+                    if to_pay > 0:
+                        # Aplicar proporcionalmente a los charges del pedido
+                        charges = order_data["charges"]
+                        due_by_charge = {}
+                        for ch in charges:
+                            due = max(0.0, (ch.total or 0.0) - (ch.discount_amount or 0.0))
+                            prev_apps = PaymentApplication.query.filter(PaymentApplication.charge_id == ch.id).all()
+                            paid_prev = sum(a.amount or 0.0 for a in prev_apps)
+                            due = max(0.0, due - paid_prev)
+                            if due > 0:
+                                due_by_charge[ch.id] = due
+                        
+                        # Distribuir proporcionalmente
+                        for ch_id, ch_due in due_by_charge.items():
+                            if to_pay <= 0:
+                                break
+                            share = (to_pay * (ch_due / order_due))
+                            amt = min(share, ch_due, to_pay)
+                            if amt > 0:
+                                db.session.add(PaymentApplication(payment_id=p.id, charge_id=ch_id, amount=amt))
+                                to_pay -= amt
+                                remaining -= amt
+            elif remaining > 0 and order_id:
+                # Distribución automática: por cliente y pedido específico
+                q = Charge.query.filter(
+                    Charge.customer_id == p.customer_id, 
+                    Charge.status == "pending", 
+                    Charge.order_id == order_id
+                )
+                charges = q.all()
+                
+                if not charges:
+                    charges = Charge.query.filter(
+                        Charge.customer_id == p.customer_id,
+                        Charge.order_id == order_id
+                    ).all()
+                
+                if charges:
+                    # calcular deuda de cada charge
+                    due_by_charge = {}
+                    total_due = 0.0
+                    for ch in charges:
+                        due = max(0.0, (ch.total or 0.0) - (ch.discount_amount or 0.0))
+                        prev_apps = PaymentApplication.query.filter(PaymentApplication.charge_id == ch.id).all()
+                        paid_prev = sum(a.amount or 0.0 for a in prev_apps)
+                        due = max(0.0, due - paid_prev)
+                        if due > 0:
+                            due_by_charge[ch.id] = due
+                            total_due += due
+                    
+                    if total_due > 0 and remaining > 0:
+                        # proporcional entero
+                        shares = []
+                        distributed = 0
+                        for ch in charges:
+                            due = due_by_charge.get(ch.id, 0.0)
+                            if due <= 0:
+                                continue
+                            raw = (remaining * (due / total_due))
+                            share_int = int(raw // 1)
+                            remainder = float(raw - share_int)
+                            shares.append((ch.id, share_int, remainder))
+                            distributed += share_int
+                        leftover = max(0, remaining - distributed)
+                        shares.sort(key=lambda t: t[2], reverse=True)
+                        idx = 0
+                        while leftover > 0 and idx < len(shares):
+                            cid, s_int, rem = shares[idx]
+                            max_add = int(max(0.0, due_by_charge.get(cid, 0.0) - s_int))
+                            if max_add > 0:
+                                add = 1
+                                shares[idx] = (cid, s_int + add, rem)
+                                leftover -= add
+                            idx = (idx + 1) if idx + 1 < len(shares) else 0
+                            if all(due_by_charge.get(cid,0.0) <= s for cid, s, _ in shares):
+                                break
+                        for cid, s_int, _ in shares:
+                            if s_int <= 0:
+                                continue
+                            amt = min(float(due_by_charge.get(cid, 0.0)), float(s_int))
+                            if amt <= 0:
+                                continue
+                            db.session.add(PaymentApplication(payment_id=p.id, charge_id=cid, amount=amt))
+            
+            # Actualizar estados pagados
+            all_affected_charges = Charge.query.filter(
+                Charge.customer_id == p.customer_id
+            ).all()
+            for ch in all_affected_charges:
                 due = max(0.0, (ch.total or 0.0) - (ch.discount_amount or 0.0))
                 apps_now = PaymentApplication.query.filter(PaymentApplication.charge_id == ch.id).all()
                 paid = sum(a.amount or 0.0 for a in apps_now)
