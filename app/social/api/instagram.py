@@ -61,21 +61,27 @@ def create_instagram_content():
 @require_token
 def generate_instagram_content():
     """Genera contenido automático de Instagram"""
-    data = request.get_json(silent=True) or {}
-    content_type = data.get("type", "ofertas_semana")
-    
-    from ..services.content_generator import generate_weekly_offers_carousel, generate_content_from_template
-    
-    if content_type == "ofertas_semana":
-        content = generate_weekly_offers_carousel()
-        if not content:
-            return jsonify({"error": "No se pudieron generar las ofertas. Verifica que existan las 3 ofertas semanales."}), 400
-        return jsonify(content.to_dict()), 201
-    else:
-        content = generate_content_from_template(content_type)
-        if not content:
-            return jsonify({"error": "No se pudo generar el contenido"}), 400
-        return jsonify(content.to_dict()), 201
+    try:
+        data = request.get_json(silent=True) or {}
+        content_type = data.get("type", "ofertas_semana")
+        
+        from ..services.content_generator import generate_weekly_offers_carousel, generate_content_from_template
+        
+        if content_type == "ofertas_semana":
+            content = generate_weekly_offers_carousel()
+            if not content:
+                return jsonify({"error": "No se pudieron generar las ofertas. Verifica que existan las 3 ofertas semanales."}), 400
+            return jsonify(content.to_dict()), 201
+        else:
+            content = generate_content_from_template(content_type)
+            if not content:
+                return jsonify({"error": "No se pudo generar el contenido"}), 400
+            return jsonify(content.to_dict()), 201
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error generando contenido de Instagram: {error_details}")
+        return jsonify({"error": "Error interno del servidor", "details": str(e)}), 500
 
 
 @instagram_bp.patch("/instagram/content/<int:content_id>/approve")

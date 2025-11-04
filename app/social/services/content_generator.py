@@ -18,29 +18,35 @@ def generate_weekly_offers_carousel():
     next_monday = get_next_monday()
     
     # Obtener las ofertas que estarán vigentes el próximo lunes
-    # Si tienen start_date, usar esa lógica; si no, usar las más recientes
-    from sqlalchemy import desc, case
+    # Versión simplificada y robusta: primero intentar con fechas, luego sin fechas
+    from sqlalchemy import desc
     
-    # Usar case para ordenar: ofertas con start_date primero, luego las sin fecha
-    order_by_case = case(
-        (WeeklyOffer.start_date.is_(None), 1),
-        else_=0
-    )
-    
+    # Intentar obtener ofertas con start_date que estén vigentes
     try:
         fruta = WeeklyOffer.query.filter_by(type='fruta').filter(
-            (WeeklyOffer.start_date <= next_monday) | (WeeklyOffer.start_date.is_(None))
-        ).order_by(order_by_case, desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+            WeeklyOffer.start_date.isnot(None),
+            WeeklyOffer.start_date <= next_monday
+        ).order_by(desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
         
         verdura = WeeklyOffer.query.filter_by(type='verdura').filter(
-            (WeeklyOffer.start_date <= next_monday) | (WeeklyOffer.start_date.is_(None))
-        ).order_by(order_by_case, desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+            WeeklyOffer.start_date.isnot(None),
+            WeeklyOffer.start_date <= next_monday
+        ).order_by(desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
         
         especial = WeeklyOffer.query.filter_by(type='especial').filter(
-            (WeeklyOffer.start_date <= next_monday) | (WeeklyOffer.start_date.is_(None))
-        ).order_by(order_by_case, desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
-    except Exception as e:
-        # Fallback: usar solo updated_at si hay error
+            WeeklyOffer.start_date.isnot(None),
+            WeeklyOffer.start_date <= next_monday
+        ).order_by(desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+        
+        # Si no hay ofertas con fechas, usar las más recientes
+        if not fruta:
+            fruta = WeeklyOffer.query.filter_by(type='fruta').order_by(desc(WeeklyOffer.updated_at)).first()
+        if not verdura:
+            verdura = WeeklyOffer.query.filter_by(type='verdura').order_by(desc(WeeklyOffer.updated_at)).first()
+        if not especial:
+            especial = WeeklyOffer.query.filter_by(type='especial').order_by(desc(WeeklyOffer.updated_at)).first()
+    except Exception:
+        # Fallback completo: usar solo updated_at
         fruta = WeeklyOffer.query.filter_by(type='fruta').order_by(desc(WeeklyOffer.updated_at)).first()
         verdura = WeeklyOffer.query.filter_by(type='verdura').order_by(desc(WeeklyOffer.updated_at)).first()
         especial = WeeklyOffer.query.filter_by(type='especial').order_by(desc(WeeklyOffer.updated_at)).first()

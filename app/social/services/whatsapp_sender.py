@@ -9,17 +9,24 @@ from ...models.customer import Customer
 from ..models.whatsapp_message import WhatsAppMessage
 
 
-def generate_catalog_messages_batch():
+def generate_catalog_messages_batch(base_message_text=None):
     """
     Genera un batch de mensajes de catálogo para todos los clientes
+    
+    Args:
+        base_message_text: Mensaje base personalizable. Si no se proporciona, usa el mensaje por defecto.
     """
     customers = Customer.query.filter(Customer.phone.isnot(None)).all()
     
     if not customers:
         return []
     
-    # Mensaje corto y conciso
-    november_offer = "🎉 ¡OFERTA NOVIEMBRE! Pide junto a un familiar o amigo y ambos obtienen 15% de descuento. Válido solo JUEVES y LUNES de noviembre. 🛒"
+    # Mensaje base corto y conciso (puede ser personalizado)
+    if base_message_text is None:
+        november_offer = "🎉 ¡OFERTA NOVIEMBRE! Pide junto a un familiar o amigo y ambos obtienen 15% de descuento. Válido solo JUEVES y LUNES de noviembre. 🛒"
+        base_message = f"📋 Catálogo de esta semana con ofertas vigentes\n\n{november_offer}"
+    else:
+        base_message = base_message_text
     
     messages = []
     
@@ -31,8 +38,8 @@ def generate_catalog_messages_batch():
     catalog_url = "/catalogo"  # URL relativa para generar el PDF
     
     for customer in customers:
-        # Generar mensaje personalizado
-        customer_name = customer.nickname or customer.name.split()[0]  # Usar nickname o primer nombre
+        # Generar mensaje personalizado - usar nickname si existe, sino usar nombre completo
+        customer_name = customer.nickname if customer.nickname else customer.name
         
         # Saludo personalizado basado en la personalidad del cliente
         greeting = "Hola"
@@ -51,9 +58,7 @@ def generate_catalog_messages_batch():
         # Mensaje corto con catálogo
         message_text = f"""{greeting}
 
-📋 Catálogo de esta semana con ofertas vigentes
-
-{november_offer}
+{base_message}
 
 ¡Esperamos tu pedido! 😊"""
         

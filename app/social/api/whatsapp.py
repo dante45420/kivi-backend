@@ -48,8 +48,8 @@ def preview_whatsapp_message(customer_id):
     
     from ..services.whatsapp_sender import generate_catalog_messages_batch
     
-    # Generar preview del mensaje
-    customer_name = customer.nickname or customer.name.split()[0]
+    # Generar preview del mensaje - usar nickname si existe
+    customer_name = customer.nickname if customer.nickname else customer.name
     greeting = "Hola"
     if customer.personality:
         personality_lower = customer.personality.lower()
@@ -66,7 +66,7 @@ def preview_whatsapp_message(customer_id):
     
     preview_text = f"""{greeting}
 
-Te comparto el catálogo de esta semana 📋
+📋 Catálogo de esta semana con ofertas vigentes
 
 {november_offer}
 
@@ -84,7 +84,10 @@ def generate_catalog_batch():
     """Genera un batch de mensajes de catálogo para todos los clientes"""
     from ..services.whatsapp_sender import generate_catalog_messages_batch
     
-    messages = generate_catalog_messages_batch()
+    data = request.get_json(silent=True) or {}
+    base_message_text = data.get("base_message_text")
+    
+    messages = generate_catalog_messages_batch(base_message_text=base_message_text)
     
     if not messages:
         return jsonify({"error": "No se encontraron clientes con teléfono"}), 400
@@ -137,6 +140,52 @@ def update_whatsapp_message(message_id):
     
     db.session.commit()
     return jsonify(message.to_dict())
+
+
+@whatsapp_bp.post("/whatsapp/batch-approve")
+@require_token
+def batch_approve_messages():
+    """Aprueba todos los mensajes pendientes de aprobación"""
+    data = request.get_json(silent=True) or {}
+    message_type = data.get("message_type", "catalog_offer")
+    
+    messages = WhatsAppMessage.query.filter_by(
+        status="pending_approval",
+        message_type=message_type
+    ).all()
+    
+    for message in messages:
+        message.status = 'approved'
+    
+    db.session.commit()
+    
+    return jsonify({
+        "message": f"Se aprobaron {len(messages)} mensajes",
+        "count": len(messages)
+    })
+
+
+@whatsapp_bp.post("/whatsapp/batch-reject")
+@require_token
+def batch_reject_messages():
+    """Rechaza todos los mensajes pendientes de aprobación"""
+    data = request.get_json(silent=True) or {}
+    message_type = data.get("message_type", "catalog_offer")
+    
+    messages = WhatsAppMessage.query.filter_by(
+        status="pending_approval",
+        message_type=message_type
+    ).all()
+    
+    for message in messages:
+        message.status = 'rejected'
+    
+    db.session.commit()
+    
+    return jsonify({
+        "message": f"Se rechazaron {len(messages)} mensajes",
+        "count": len(messages)
+    })
 
 
 @whatsapp_bp.post("/whatsapp/send-test")
