@@ -1,10 +1,12 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 import json
+import os
 
 from ...db import db
 from ...api.auth import require_token
 from ..models.instagram_content import InstagramContent
 from ..models.content_template import ContentTemplate
+from ..utils.image_positions import get_positions, save_positions
 
 
 instagram_bp = Blueprint("instagram", __name__)
@@ -183,4 +185,23 @@ def create_template():
         db.session.add(template)
         db.session.commit()
         return jsonify(template.to_dict()), 201
+
+
+@instagram_bp.get("/instagram/image-positions")
+@require_token
+def get_image_positions():
+    """Obtiene las posiciones configuradas para las imágenes de ofertas"""
+    return jsonify(get_positions())
+
+
+@instagram_bp.post("/instagram/image-positions")
+@require_token
+def update_image_positions():
+    """Actualiza las posiciones de los elementos en la plantilla de ofertas"""
+    data = request.get_json(silent=True) or {}
+    
+    if save_positions(data):
+        return jsonify({"success": True, "positions": get_positions()})
+    else:
+        return jsonify({"error": "No se pudieron guardar las posiciones"}), 500
 

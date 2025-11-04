@@ -154,6 +154,8 @@ def get_next_week_offers():
 @require_token
 def create_or_update_weekly_offer():
     """Crea o actualiza una oferta semanal y actualiza la foto del producto si se proporciona"""
+    from datetime import timedelta
+    
     data = request.get_json(silent=True) or {}
     
     offer_type = data.get("type")
@@ -174,10 +176,27 @@ def create_or_update_weekly_offer():
         product.quality_photo_url = data.get("quality_photo_url")
         db.session.flush()  # Guardar cambios del producto antes de continuar
     
-    # Buscar si ya existe una oferta de este tipo
-    existing = WeeklyOffer.query.filter_by(type=offer_type).order_by(WeeklyOffer.updated_at.desc()).first()
+    # Determinar para qué semana es la oferta
+    week_target = data.get("week_target", "current")  # "current" o "next"
     
-    # Parsear fechas si se proporcionan
+    # Calcular fechas de la semana
+    today = datetime.now()
+    
+    # Calcular lunes de esta semana
+    days_since_monday = today.weekday()  # 0 = lunes, 6 = domingo
+    this_monday = today - timedelta(days=days_since_monday)
+    this_monday = this_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    if week_target == "next":
+        # Para próxima semana: lunes de la próxima semana
+        week_monday = this_monday + timedelta(days=7)
+    else:
+        # Para esta semana: lunes de esta semana
+        week_monday = this_monday
+    
+    week_sunday = week_monday + timedelta(days=6, hours=23, minutes=59, seconds=59)
+    
+    # Parsear fechas si se proporcionan explícitamente
     start_date = None
     end_date = None
     if data.get("start_date"):
@@ -191,7 +210,38 @@ def create_or_update_weekly_offer():
         except:
             end_date = None
     
+    # Si no se proporcionaron fechas, usar las calculadas automáticamente
+    if start_date is None:
+        start_date = week_monday
+    if end_date is None:
+        end_date = week_sunday
+    
     has_dates = _has_date_columns()
+    
+    # Buscar si ya existe una oferta de este tipo para esta semana
+    existing = None
+    if has_dates:
+        try:
+            # Buscar ofertas que se solapen con esta semana
+            existing = WeeklyOffer.query.filter_by(type=offer_type).filter(
+                WeeklyOffer.start_date <= week_sunday,
+                WeeklyOffer.end_date >= week_monday
+            ).first()
+            
+            # Si no hay solapamiento, buscar la más reciente
+            if not existing:
+                existing = WeeklyOffer.query.filter_by(type=offer_type).order_by(
+                    WeeklyOffer.updated_at.desc()
+                ).first()
+        except Exception:
+            # Fallback: buscar la más reciente
+            existing = WeeklyOffer.query.filter_by(type=offer_type).order_by(
+                WeeklyOffer.updated_at.desc()
+            ).first()
+    else:
+        existing = WeeklyOffer.query.filter_by(type=offer_type).order_by(
+            WeeklyOffer.updated_at.desc()
+        ).first()
     
     if existing:
         # Actualizar la existente
@@ -199,10 +249,8 @@ def create_or_update_weekly_offer():
         existing.price = data.get("price", existing.price)
         existing.reference_price = data.get("reference_price", existing.reference_price)
         if has_dates:
-            if start_date is not None:
-                existing.start_date = start_date
-            if end_date is not None:
-                existing.end_date = end_date
+            existing.start_date = start_date
+            existing.end_date = end_date
         db.session.commit()
         return jsonify(existing.to_dict())
     else:
