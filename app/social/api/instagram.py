@@ -226,7 +226,10 @@ def serve_generated_image(filename):
     
     # Verificar que el archivo existe y está dentro del directorio permitido
     if not os.path.exists(image_path):
-        return jsonify({"error": "Imagen no encontrada"}), 404
+        print(f"❌ Imagen no encontrada: {image_path}")
+        print(f"   Directorio generado: {generated_dir}")
+        print(f"   Archivos en directorio: {os.listdir(generated_dir) if os.path.exists(generated_dir) else 'Directorio no existe'}")
+        return jsonify({"error": "Imagen no encontrada", "path": image_path, "dir": generated_dir}), 404
     
     # Verificar que no hay path traversal
     real_generated_dir = os.path.realpath(generated_dir)
@@ -234,5 +237,34 @@ def serve_generated_image(filename):
     if not real_image_path.startswith(real_generated_dir):
         return jsonify({"error": "Acceso denegado"}), 403
     
-    return send_file(image_path, mimetype='image/png')
+    print(f"✅ Sirviendo imagen: {filename} desde {image_path}")
+    return send_file(image_path, mimetype='image/png', as_attachment=False)
+
+
+@instagram_bp.get("/instagram/generated-image/<path:filename>/download")
+def download_generated_image(filename):
+    """Descarga una imagen generada"""
+    import os
+    
+    # Obtener el directorio de imágenes generadas
+    current_file_dir = os.path.dirname(os.path.abspath(__file__))
+    backend_root = os.path.join(current_file_dir, '..', '..', '..')
+    backend_root = os.path.abspath(backend_root)
+    generated_dir = os.path.join(backend_root, 'generated_images')
+    
+    # Sanitizar el filename
+    filename = os.path.basename(filename)
+    image_path = os.path.join(generated_dir, filename)
+    
+    # Verificar que existe
+    if not os.path.exists(image_path):
+        return jsonify({"error": "Imagen no encontrada"}), 404
+    
+    # Verificar path traversal
+    real_generated_dir = os.path.realpath(generated_dir)
+    real_image_path = os.path.realpath(image_path)
+    if not real_image_path.startswith(real_generated_dir):
+        return jsonify({"error": "Acceso denegado"}), 403
+    
+    return send_file(image_path, mimetype='image/png', as_attachment=True, download_name=filename)
 

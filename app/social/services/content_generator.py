@@ -141,7 +141,8 @@ def generate_weekly_offers_carousel():
     
     # Slide 1: Verdura
     if verdura.product and verdura.product.quality_photo_url:
-        # Generar imagen usando la plantilla
+        # Generar imagen usando la plantilla - OBLIGATORIO
+        print(f"Generando imagen para verdura: {verdura.product.name}")
         generated_image_path = generate_offer_image(
             offer_type='verdura',
             product_name=verdura.product.name,
@@ -150,30 +151,33 @@ def generate_weekly_offers_carousel():
             product_image_url=verdura.product.quality_photo_url
         )
         
-        # Usar la imagen generada si existe, sino usar la original
-        image_url = verdura.product.quality_photo_url
-        if generated_image_path and os.path.exists(generated_image_path):
+        # SOLO usar la imagen generada - NO usar la original como fallback
+        if not generated_image_path or not os.path.exists(generated_image_path):
+            print(f"❌ ERROR: No se pudo generar la imagen para verdura: {verdura.product.name}")
+            print(f"   Ruta esperada: {generated_image_path}")
+            # Continuar sin agregar este slide si no se puede generar
+            # O lanzar error para que el usuario sepa que hay un problema
+        else:
             # Convertir la ruta local a una URL accesible
             filename = os.path.basename(generated_image_path)
             image_url = f"/api/social/instagram/generated-image/{filename}"
-            print(f"✅ Imagen generada encontrada: {filename} -> {image_url}")
-        else:
-            print(f"⚠️ Imagen generada no encontrada: {generated_image_path}")
-        
-        media_urls.append({
-            "type": "image",
-            "url": image_url,
-            "offer_type": "verdura",
-            "product_name": verdura.product.name,
-            "price": verdura.price or "",
-            "reference_price": verdura.reference_price or "",
-            "default_caption": f"🥬 {verdura.product.name}\n{verdura.price or ''}\n{verdura.reference_price if verdura.reference_price else ''}",
-            "caption": f"🥬 {verdura.product.name}\n{verdura.price or ''}\n{verdura.reference_price if verdura.reference_price else ''}"  # Editable
-        })
+            print(f"✅ Imagen generada exitosamente: {filename} -> {image_url}")
+            
+            media_urls.append({
+                "type": "image",
+                "url": image_url,
+                "offer_type": "verdura",
+                "product_name": verdura.product.name,
+                "price": verdura.price or "",
+                "reference_price": verdura.reference_price or "",
+                "default_caption": f"🥬 {verdura.product.name}\n{verdura.price or ''}\n{verdura.reference_price if verdura.reference_price else ''}",
+                "caption": f"🥬 {verdura.product.name}\n{verdura.price or ''}\n{verdura.reference_price if verdura.reference_price else ''}"  # Editable
+            })
     
     # Slide 2: Fruta
     if fruta.product and fruta.product.quality_photo_url:
-        # Generar imagen usando la plantilla
+        # Generar imagen usando la plantilla - OBLIGATORIO
+        print(f"Generando imagen para fruta: {fruta.product.name}")
         generated_image_path = generate_offer_image(
             offer_type='fruta',
             product_name=fruta.product.name,
@@ -182,30 +186,32 @@ def generate_weekly_offers_carousel():
             product_image_url=fruta.product.quality_photo_url
         )
         
-        # Usar la imagen generada si existe, sino usar la original
-        image_url = fruta.product.quality_photo_url
-        if generated_image_path and os.path.exists(generated_image_path):
+        # SOLO usar la imagen generada - NO usar la original como fallback
+        if not generated_image_path or not os.path.exists(generated_image_path):
+            print(f"❌ ERROR: No se pudo generar la imagen para fruta: {fruta.product.name}")
+            print(f"   Ruta esperada: {generated_image_path}")
+            # Continuar sin agregar este slide si no se puede generar
+        else:
             # Convertir la ruta local a una URL accesible
             filename = os.path.basename(generated_image_path)
             image_url = f"/api/social/instagram/generated-image/{filename}"
-            print(f"✅ Imagen generada encontrada: {filename} -> {image_url}")
-        else:
-            print(f"⚠️ Imagen generada no encontrada: {generated_image_path}")
-        
-        media_urls.append({
-            "type": "image",
-            "url": image_url,
-            "offer_type": "fruta",
-            "product_name": fruta.product.name,
-            "price": fruta.price or "",
-            "reference_price": fruta.reference_price or "",
-            "default_caption": f"🍎 {fruta.product.name}\n{fruta.price or ''}\n{fruta.reference_price if fruta.reference_price else ''}",
-            "caption": f"🍎 {fruta.product.name}\n{fruta.price or ''}\n{fruta.reference_price if fruta.reference_price else ''}"  # Editable
-        })
+            print(f"✅ Imagen generada exitosamente: {filename} -> {image_url}")
+            
+            media_urls.append({
+                "type": "image",
+                "url": image_url,
+                "offer_type": "fruta",
+                "product_name": fruta.product.name,
+                "price": fruta.price or "",
+                "reference_price": fruta.reference_price or "",
+                "default_caption": f"🍎 {fruta.product.name}\n{fruta.price or ''}\n{fruta.reference_price if fruta.reference_price else ''}",
+                "caption": f"🍎 {fruta.product.name}\n{fruta.price or ''}\n{fruta.reference_price if fruta.reference_price else ''}"  # Editable
+            })
     
     # Slide 3: Especial
     if especial.product and especial.product.quality_photo_url:
-        # Generar imagen usando la plantilla
+        # Generar imagen usando la plantilla - OBLIGATORIO
+        print(f"Generando imagen para especial: {especial.product.name}")
         generated_image_path = generate_offer_image(
             offer_type='especial',
             product_name=especial.product.name,
@@ -214,26 +220,27 @@ def generate_weekly_offers_carousel():
             product_image_url=especial.product.quality_photo_url
         )
         
-        # Usar la imagen generada si existe, sino usar la original
-        image_url = especial.product.quality_photo_url
-        if generated_image_path and os.path.exists(generated_image_path):
+        # SOLO usar la imagen generada - NO usar la original como fallback
+        if not generated_image_path or not os.path.exists(generated_image_path):
+            print(f"❌ ERROR: No se pudo generar la imagen para especial: {especial.product.name}")
+            print(f"   Ruta esperada: {generated_image_path}")
+            # Continuar sin agregar este slide si no se puede generar
+        else:
             # Convertir la ruta local a una URL accesible
             filename = os.path.basename(generated_image_path)
             image_url = f"/api/social/instagram/generated-image/{filename}"
-            print(f"✅ Imagen generada encontrada: {filename} -> {image_url}")
-        else:
-            print(f"⚠️ Imagen generada no encontrada: {generated_image_path}")
-        
-        media_urls.append({
-            "type": "image",
-            "url": image_url,
-            "offer_type": "especial",
-            "product_name": especial.product.name,
-            "price": especial.price or "",
-            "reference_price": especial.reference_price or "",
-            "default_caption": f"⭐ {especial.product.name}\n{especial.price or ''}\n{especial.reference_price if especial.reference_price else ''}",
-            "caption": f"⭐ {especial.product.name}\n{especial.price or ''}\n{especial.reference_price if especial.reference_price else ''}"  # Editable
-        })
+            print(f"✅ Imagen generada exitosamente: {filename} -> {image_url}")
+            
+            media_urls.append({
+                "type": "image",
+                "url": image_url,
+                "offer_type": "especial",
+                "product_name": especial.product.name,
+                "price": especial.price or "",
+                "reference_price": especial.reference_price or "",
+                "default_caption": f"⭐ {especial.product.name}\n{especial.price or ''}\n{especial.reference_price if especial.reference_price else ''}",
+                "caption": f"⭐ {especial.product.name}\n{especial.price or ''}\n{especial.reference_price if especial.reference_price else ''}"  # Editable
+            })
     
     if not media_urls:
         return None

@@ -188,12 +188,17 @@ def generate_offer_image(
             img_y = int(product_image_y)
             print(f"Posicionando imagen en: ({img_x}, {img_y})")
             
-            # Pegar imagen sobre la plantilla (usar RGBA para mantener transparencia si existe)
+            # Pegar imagen sobre la plantilla - manejar transparencia correctamente
+            # Si la imagen tiene fondo transparente (RGBA), usar la máscara
             if product_img.mode == 'RGBA':
-                img.paste(product_img, (img_x, img_y), product_img)
+                # Convertir a RGBA si no lo es para mantener transparencia
+                alpha = product_img.split()[3]  # Canal alpha
+                img.paste(product_img, (img_x, img_y), alpha)  # Usar alpha como máscara
             else:
-                img.paste(product_img, (img_x, img_y))
-            print("Imagen del producto pegada exitosamente")
+                # Si no tiene transparencia, convertir a RGBA para pegarlo mejor
+                product_img_rgba = product_img.convert('RGBA')
+                img.paste(product_img_rgba, (img_x, img_y), product_img_rgba)
+            print("Imagen del producto pegada exitosamente con transparencia")
         else:
             print(f"⚠️ No se pudo descargar la imagen del producto desde: {product_image_url}")
         
