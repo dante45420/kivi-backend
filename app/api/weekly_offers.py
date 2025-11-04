@@ -16,26 +16,38 @@ def get_weekly_offers():
     Si hay ofertas con start_date, retorna las que están vigentes.
     Si no, retorna las más recientes.
     """
-    from sqlalchemy import desc, nullslast
+    from sqlalchemy import desc, case
     
     today = datetime.now()
     
+    # Usar case para ordenar: ofertas con start_date primero, luego las sin fecha
+    order_by_case = case(
+        (WeeklyOffer.start_date.is_(None), 1),
+        else_=0
+    )
+    
     # Obtener ofertas que estén vigentes hoy (start_date <= today y (end_date >= today o end_date es None))
     # Si no hay start_date, usar las más recientes como fallback
-    fruta = WeeklyOffer.query.filter_by(type='fruta').filter(
-        ((WeeklyOffer.start_date <= today) | (WeeklyOffer.start_date.is_(None))) &
-        ((WeeklyOffer.end_date >= today) | (WeeklyOffer.end_date.is_(None)))
-    ).order_by(nullslast(desc(WeeklyOffer.start_date)), desc(WeeklyOffer.updated_at)).first()
-    
-    verdura = WeeklyOffer.query.filter_by(type='verdura').filter(
-        ((WeeklyOffer.start_date <= today) | (WeeklyOffer.start_date.is_(None))) &
-        ((WeeklyOffer.end_date >= today) | (WeeklyOffer.end_date.is_(None)))
-    ).order_by(nullslast(desc(WeeklyOffer.start_date)), desc(WeeklyOffer.updated_at)).first()
-    
-    especial = WeeklyOffer.query.filter_by(type='especial').filter(
-        ((WeeklyOffer.start_date <= today) | (WeeklyOffer.start_date.is_(None))) &
-        ((WeeklyOffer.end_date >= today) | (WeeklyOffer.end_date.is_(None)))
-    ).order_by(nullslast(desc(WeeklyOffer.start_date)), desc(WeeklyOffer.updated_at)).first()
+    try:
+        fruta = WeeklyOffer.query.filter_by(type='fruta').filter(
+            ((WeeklyOffer.start_date <= today) | (WeeklyOffer.start_date.is_(None))) &
+            ((WeeklyOffer.end_date >= today) | (WeeklyOffer.end_date.is_(None)))
+        ).order_by(order_by_case, desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+        
+        verdura = WeeklyOffer.query.filter_by(type='verdura').filter(
+            ((WeeklyOffer.start_date <= today) | (WeeklyOffer.start_date.is_(None))) &
+            ((WeeklyOffer.end_date >= today) | (WeeklyOffer.end_date.is_(None)))
+        ).order_by(order_by_case, desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+        
+        especial = WeeklyOffer.query.filter_by(type='especial').filter(
+            ((WeeklyOffer.start_date <= today) | (WeeklyOffer.start_date.is_(None))) &
+            ((WeeklyOffer.end_date >= today) | (WeeklyOffer.end_date.is_(None)))
+        ).order_by(order_by_case, desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+    except Exception:
+        # Fallback: usar solo updated_at si hay error
+        fruta = WeeklyOffer.query.filter_by(type='fruta').order_by(desc(WeeklyOffer.updated_at)).first()
+        verdura = WeeklyOffer.query.filter_by(type='verdura').order_by(desc(WeeklyOffer.updated_at)).first()
+        especial = WeeklyOffer.query.filter_by(type='especial').order_by(desc(WeeklyOffer.updated_at)).first()
     
     return jsonify({
         "fruta": fruta.to_dict() if fruta else None,
@@ -51,7 +63,7 @@ def get_next_week_offers():
     Obtiene las ofertas semanales que estarán vigentes la próxima semana.
     Útil para planificación y generación de contenido con anticipación.
     """
-    from sqlalchemy import desc, nullslast
+    from sqlalchemy import desc, case
     from datetime import timedelta
     
     # Calcular el próximo lunes
@@ -62,21 +74,33 @@ def get_next_week_offers():
     next_monday = today + timedelta(days=days_until_monday)
     next_monday = next_monday.replace(hour=0, minute=0, second=0, microsecond=0)
     
+    # Usar case para ordenar: ofertas con start_date primero, luego las sin fecha
+    order_by_case = case(
+        (WeeklyOffer.start_date.is_(None), 1),
+        else_=0
+    )
+    
     # Obtener ofertas que estarán vigentes el próximo lunes
-    fruta = WeeklyOffer.query.filter_by(type='fruta').filter(
-        ((WeeklyOffer.start_date <= next_monday) | (WeeklyOffer.start_date.is_(None))) &
-        ((WeeklyOffer.end_date >= next_monday) | (WeeklyOffer.end_date.is_(None)))
-    ).order_by(nullslast(desc(WeeklyOffer.start_date)), desc(WeeklyOffer.updated_at)).first()
-    
-    verdura = WeeklyOffer.query.filter_by(type='verdura').filter(
-        ((WeeklyOffer.start_date <= next_monday) | (WeeklyOffer.start_date.is_(None))) &
-        ((WeeklyOffer.end_date >= next_monday) | (WeeklyOffer.end_date.is_(None)))
-    ).order_by(nullslast(desc(WeeklyOffer.start_date)), desc(WeeklyOffer.updated_at)).first()
-    
-    especial = WeeklyOffer.query.filter_by(type='especial').filter(
-        ((WeeklyOffer.start_date <= next_monday) | (WeeklyOffer.start_date.is_(None))) &
-        ((WeeklyOffer.end_date >= next_monday) | (WeeklyOffer.end_date.is_(None)))
-    ).order_by(nullslast(desc(WeeklyOffer.start_date)), desc(WeeklyOffer.updated_at)).first()
+    try:
+        fruta = WeeklyOffer.query.filter_by(type='fruta').filter(
+            ((WeeklyOffer.start_date <= next_monday) | (WeeklyOffer.start_date.is_(None))) &
+            ((WeeklyOffer.end_date >= next_monday) | (WeeklyOffer.end_date.is_(None)))
+        ).order_by(order_by_case, desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+        
+        verdura = WeeklyOffer.query.filter_by(type='verdura').filter(
+            ((WeeklyOffer.start_date <= next_monday) | (WeeklyOffer.start_date.is_(None))) &
+            ((WeeklyOffer.end_date >= next_monday) | (WeeklyOffer.end_date.is_(None)))
+        ).order_by(order_by_case, desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+        
+        especial = WeeklyOffer.query.filter_by(type='especial').filter(
+            ((WeeklyOffer.start_date <= next_monday) | (WeeklyOffer.start_date.is_(None))) &
+            ((WeeklyOffer.end_date >= next_monday) | (WeeklyOffer.end_date.is_(None)))
+        ).order_by(order_by_case, desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+    except Exception:
+        # Fallback: usar solo updated_at si hay error
+        fruta = WeeklyOffer.query.filter_by(type='fruta').order_by(desc(WeeklyOffer.updated_at)).first()
+        verdura = WeeklyOffer.query.filter_by(type='verdura').order_by(desc(WeeklyOffer.updated_at)).first()
+        especial = WeeklyOffer.query.filter_by(type='especial').order_by(desc(WeeklyOffer.updated_at)).first()
     
     return jsonify({
         "fruta": fruta.to_dict() if fruta else None,

@@ -62,19 +62,11 @@ def preview_whatsapp_message(customer_id):
     else:
         greeting = f"Hola {customer_name}"
     
-    november_offer = """🎉 ¡OFERTA ESPECIAL DE NOVIEMBRE! 🎉
-
-Pide junto a un familiar, vecino o amigo y ambos obtienen un 15% de descuento.
-
-✅ Válido solo los JUEVES y LUNES de noviembre
-✅ Aplica para cualquier pedido
-✅ El descuento se aplica automáticamente cuando mencionas que vienes acompañado
-
-¡Aprovecha esta oportunidad única de ahorrar en tus compras favoritas! 🛒✨"""
+    november_offer = "🎉 ¡OFERTA NOVIEMBRE! Pide junto a un familiar o amigo y ambos obtienen 15% de descuento. Válido solo JUEVES y LUNES de noviembre. 🛒"
     
     preview_text = f"""{greeting}
 
-Te comparto el catálogo de esta semana con nuestras mejores ofertas. 📋
+Te comparto el catálogo de esta semana 📋
 
 {november_offer}
 

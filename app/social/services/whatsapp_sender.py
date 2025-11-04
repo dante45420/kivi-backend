@@ -18,21 +18,17 @@ def generate_catalog_messages_batch():
     if not customers:
         return []
     
-    # Mensaje base para la oferta de noviembre
-    november_offer = """🎉 ¡OFERTA ESPECIAL DE NOVIEMBRE! 🎉
-
-Pide junto a un familiar, vecino o amigo y ambos obtienen un 15% de descuento.
-
-✅ Válido solo los JUEVES y LUNES de noviembre
-✅ Aplica para cualquier pedido
-✅ El descuento se aplica automáticamente cuando mencionas que vienes acompañado
-
-¡Aprovecha esta oportunidad única de ahorrar en tus compras favoritas! 🛒✨"""
+    # Mensaje corto y conciso
+    november_offer = "🎉 ¡OFERTA NOVIEMBRE! Pide junto a un familiar o amigo y ambos obtienen 15% de descuento. Válido solo JUEVES y LUNES de noviembre. 🛒"
     
     messages = []
     
     # Programar para el próximo lunes a las 8:00 AM
     next_monday = get_next_monday()
+    
+    # URL del catálogo (se generará dinámicamente o será una URL estática)
+    # Por ahora usamos una URL relativa que el frontend puede generar
+    catalog_url = "/catalogo"  # URL relativa para generar el PDF
     
     for customer in customers:
         # Generar mensaje personalizado
@@ -52,10 +48,10 @@ Pide junto a un familiar, vecino o amigo y ambos obtienen un 15% de descuento.
         else:
             greeting = f"Hola {customer_name}"
         
-        # Mensaje completo
+        # Mensaje corto con catálogo
         message_text = f"""{greeting}
 
-Te comparto el catálogo de esta semana con nuestras mejores ofertas. 📋
+📋 Catálogo de esta semana con ofertas vigentes
 
 {november_offer}
 
@@ -67,7 +63,7 @@ Te comparto el catálogo de esta semana con nuestras mejores ofertas. 📋
             message_type="catalog_offer",
             status="pending_approval",
             message_text=message_text,
-            catalog_url=None,  # Se llenará cuando se genere el PDF
+            catalog_url=catalog_url,
             scheduled_date=next_monday
         )
         
