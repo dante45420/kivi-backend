@@ -205,3 +205,26 @@ def update_image_positions():
     else:
         return jsonify({"error": "No se pudieron guardar las posiciones"}), 500
 
+
+@instagram_bp.get("/instagram/generated-image/<path:filename>")
+def serve_generated_image(filename):
+    """Sirve imágenes generadas desde el directorio de imágenes generadas"""
+    from ..utils.image_processor import get_template_path
+    
+    # Obtener el directorio de imágenes generadas
+    template_path = get_template_path()
+    generated_dir = os.path.join(os.path.dirname(template_path), '..', '..', '..', 'generated_images')
+    image_path = os.path.join(generated_dir, filename)
+    
+    # Verificar que el archivo existe y está dentro del directorio permitido
+    if not os.path.exists(image_path):
+        return jsonify({"error": "Imagen no encontrada"}), 404
+    
+    # Verificar que no hay path traversal
+    real_generated_dir = os.path.realpath(generated_dir)
+    real_image_path = os.path.realpath(image_path)
+    if not real_image_path.startswith(real_generated_dir):
+        return jsonify({"error": "Acceso denegado"}), 403
+    
+    return send_file(image_path, mimetype='image/png')
+

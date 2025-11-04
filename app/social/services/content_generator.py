@@ -93,9 +93,9 @@ def generate_weekly_offers_carousel():
         # Usar la imagen generada si existe, sino usar la original
         image_url = verdura.product.quality_photo_url
         if generated_image_path and os.path.exists(generated_image_path):
-            # Por ahora usamos la ruta local, luego se puede subir a un servicio de almacenamiento
-            # TODO: Subir imagen generada a un servicio de almacenamiento (S3, Cloudinary, etc.)
-            image_url = generated_image_path
+            # Convertir la ruta local a una URL accesible
+            filename = os.path.basename(generated_image_path)
+            image_url = f"/api/social/instagram/generated-image/{filename}"
         
         media_urls.append({
             "type": "image",
@@ -122,7 +122,9 @@ def generate_weekly_offers_carousel():
         # Usar la imagen generada si existe, sino usar la original
         image_url = fruta.product.quality_photo_url
         if generated_image_path and os.path.exists(generated_image_path):
-            image_url = generated_image_path
+            # Convertir la ruta local a una URL accesible
+            filename = os.path.basename(generated_image_path)
+            image_url = f"/api/social/instagram/generated-image/{filename}"
         
         media_urls.append({
             "type": "image",
@@ -149,7 +151,9 @@ def generate_weekly_offers_carousel():
         # Usar la imagen generada si existe, sino usar la original
         image_url = especial.product.quality_photo_url
         if generated_image_path and os.path.exists(generated_image_path):
-            image_url = generated_image_path
+            # Convertir la ruta local a una URL accesible
+            filename = os.path.basename(generated_image_path)
+            image_url = f"/api/social/instagram/generated-image/{filename}"
         
         media_urls.append({
             "type": "image",
