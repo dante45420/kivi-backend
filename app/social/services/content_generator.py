@@ -3,11 +3,24 @@ Servicio para generar contenido automático de Instagram
 """
 from datetime import datetime, timedelta
 import json
+import os
 
 from ...db import db
 from ...models.weekly_offer import WeeklyOffer
 from ..models.instagram_content import InstagramContent
 from ..models.content_template import ContentTemplate
+from sqlalchemy import inspect, desc
+
+
+def _has_date_columns():
+    """Verifica si las columnas start_date y end_date existen en la tabla weekly_offers"""
+    try:
+        inspector = inspect(db.engine)
+        columns = [col['name'] for col in inspector.get_columns('weekly_offers')]
+        return 'start_date' in columns and 'end_date' in columns
+    except Exception as e:
+        print(f"Error verificando columnas: {e}")
+        return False
 
 
 def generate_weekly_offers_carousel():
@@ -17,39 +30,32 @@ def generate_weekly_offers_carousel():
     # Calcular el próximo lunes (fecha de publicación)
     next_monday = get_next_monday()
     
-    # Obtener las ofertas que estarán vigentes el próximo lunes
-    # Versión simplificada y robusta: primero intentar con fechas, luego sin fechas
-    from sqlalchemy import desc
+    # Verificar si las columnas de fecha existen
+    has_dates = _has_date_columns()
     
-    # Intentar obtener ofertas con start_date que estén vigentes
-    try:
-        fruta = WeeklyOffer.query.filter_by(type='fruta').filter(
-            WeeklyOffer.start_date.isnot(None),
-            WeeklyOffer.start_date <= next_monday
-        ).order_by(desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+    def get_offer(type_name):
+        """Obtiene una oferta del tipo especificado"""
+        if has_dates:
+            try:
+                # Intentar obtener oferta con start_date que esté vigente
+                offer_with_date = WeeklyOffer.query.filter_by(type=type_name).filter(
+                    WeeklyOffer.start_date.isnot(None),
+                    WeeklyOffer.start_date <= next_monday
+                ).order_by(desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+                
+                if offer_with_date:
+                    # Verificar si también tiene end_date y si está vigente
+                    if offer_with_date.end_date is None or offer_with_date.end_date >= next_monday:
+                        return offer_with_date
+            except Exception as e:
+                print(f"Error usando columnas de fecha: {e}")
         
-        verdura = WeeklyOffer.query.filter_by(type='verdura').filter(
-            WeeklyOffer.start_date.isnot(None),
-            WeeklyOffer.start_date <= next_monday
-        ).order_by(desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
-        
-        especial = WeeklyOffer.query.filter_by(type='especial').filter(
-            WeeklyOffer.start_date.isnot(None),
-            WeeklyOffer.start_date <= next_monday
-        ).order_by(desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
-        
-        # Si no hay ofertas con fechas, usar las más recientes
-        if not fruta:
-            fruta = WeeklyOffer.query.filter_by(type='fruta').order_by(desc(WeeklyOffer.updated_at)).first()
-        if not verdura:
-            verdura = WeeklyOffer.query.filter_by(type='verdura').order_by(desc(WeeklyOffer.updated_at)).first()
-        if not especial:
-            especial = WeeklyOffer.query.filter_by(type='especial').order_by(desc(WeeklyOffer.updated_at)).first()
-    except Exception:
-        # Fallback completo: usar solo updated_at
-        fruta = WeeklyOffer.query.filter_by(type='fruta').order_by(desc(WeeklyOffer.updated_at)).first()
-        verdura = WeeklyOffer.query.filter_by(type='verdura').order_by(desc(WeeklyOffer.updated_at)).first()
-        especial = WeeklyOffer.query.filter_by(type='especial').order_by(desc(WeeklyOffer.updated_at)).first()
+        # Si no hay oferta con fecha vigente, usar la más reciente
+        return WeeklyOffer.query.filter_by(type=type_name).order_by(desc(WeeklyOffer.updated_at)).first()
+    
+    fruta = get_offer('fruta')
+    verdura = get_offer('verdura')
+    especial = get_offer('especial')
     
     if not fruta or not verdura or not especial:
         return None
@@ -67,14 +73,33 @@ def generate_weekly_offers_carousel():
         "#comidalocal"
     ]
     
+    # Generar imágenes usando la plantilla
+    from ..utils.image_processor import generate_offer_image
+    
     # URLs de imágenes para cada slide del carrusel con descripciones editables
     media_urls = []
     
     # Slide 1: Verdura
     if verdura.product and verdura.product.quality_photo_url:
+        # Generar imagen usando la plantilla
+        generated_image_path = generate_offer_image(
+            offer_type='verdura',
+            product_name=verdura.product.name,
+            price=verdura.price or "",
+            reference_price=verdura.reference_price or "",
+            product_image_url=verdura.product.quality_photo_url
+        )
+        
+        # Usar la imagen generada si existe, sino usar la original
+        image_url = verdura.product.quality_photo_url
+        if generated_image_path and os.path.exists(generated_image_path):
+            # Por ahora usamos la ruta local, luego se puede subir a un servicio de almacenamiento
+            # TODO: Subir imagen generada a un servicio de almacenamiento (S3, Cloudinary, etc.)
+            image_url = generated_image_path
+        
         media_urls.append({
             "type": "image",
-            "url": verdura.product.quality_photo_url,
+            "url": image_url,
             "offer_type": "verdura",
             "product_name": verdura.product.name,
             "price": verdura.price or "",
@@ -85,9 +110,23 @@ def generate_weekly_offers_carousel():
     
     # Slide 2: Fruta
     if fruta.product and fruta.product.quality_photo_url:
+        # Generar imagen usando la plantilla
+        generated_image_path = generate_offer_image(
+            offer_type='fruta',
+            product_name=fruta.product.name,
+            price=fruta.price or "",
+            reference_price=fruta.reference_price or "",
+            product_image_url=fruta.product.quality_photo_url
+        )
+        
+        # Usar la imagen generada si existe, sino usar la original
+        image_url = fruta.product.quality_photo_url
+        if generated_image_path and os.path.exists(generated_image_path):
+            image_url = generated_image_path
+        
         media_urls.append({
             "type": "image",
-            "url": fruta.product.quality_photo_url,
+            "url": image_url,
             "offer_type": "fruta",
             "product_name": fruta.product.name,
             "price": fruta.price or "",
@@ -98,9 +137,23 @@ def generate_weekly_offers_carousel():
     
     # Slide 3: Especial
     if especial.product and especial.product.quality_photo_url:
+        # Generar imagen usando la plantilla
+        generated_image_path = generate_offer_image(
+            offer_type='especial',
+            product_name=especial.product.name,
+            price=especial.price or "",
+            reference_price=especial.reference_price or "",
+            product_image_url=especial.product.quality_photo_url
+        )
+        
+        # Usar la imagen generada si existe, sino usar la original
+        image_url = especial.product.quality_photo_url
+        if generated_image_path and os.path.exists(generated_image_path):
+            image_url = generated_image_path
+        
         media_urls.append({
             "type": "image",
-            "url": especial.product.quality_photo_url,
+            "url": image_url,
             "offer_type": "especial",
             "product_name": especial.product.name,
             "price": especial.price or "",
