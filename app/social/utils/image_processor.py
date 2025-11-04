@@ -27,16 +27,27 @@ def download_image(url: str) -> Optional[Image.Image]:
         return None
 
 
-def get_font(size: int, bold: bool = False) -> Optional[ImageFont.FreeTypeFont]:
+def get_font(size: int, bold: bool = False, italic: bool = False) -> Optional[ImageFont.FreeTypeFont]:
     """Obtiene una fuente del sistema"""
     try:
         # Intentar usar fuentes del sistema
-        if bold:
-            # Intentar fuentes bold comunes
+        if bold and italic:
+            font_paths = [
+                '/System/Library/Fonts/Supplemental/Arial Bold Italic.ttf',
+                '/System/Library/Fonts/Helvetica.ttc',
+                '/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf',
+            ]
+        elif bold:
             font_paths = [
                 '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
                 '/System/Library/Fonts/Helvetica.ttc',
                 '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+            ]
+        elif italic:
+            font_paths = [
+                '/System/Library/Fonts/Supplemental/Arial Italic.ttf',
+                '/System/Library/Fonts/Helvetica.ttc',
+                '/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf',
             ]
         else:
             font_paths = [
@@ -51,7 +62,8 @@ def get_font(size: int, bold: bool = False) -> Optional[ImageFont.FreeTypeFont]:
         
         # Si no encuentra fuente, usar la por defecto
         return ImageFont.load_default()
-    except Exception:
+    except Exception as e:
+        print(f"Warning: No se pudo cargar la fuente, usando default: {e}")
         return ImageFont.load_default()
 
 
@@ -106,109 +118,99 @@ def generate_offer_image(
         title_font = get_font(positions['title']['font_size'], bold=positions['title']['bold'])
         product_font = get_font(positions['product_name']['font_size'], bold=positions['product_name']['bold'])
         price_font = get_font(positions['price']['font_size'], bold=positions['price']['bold'])
-        ref_price_font = get_font(positions['reference_price']['font_size'], bold=positions['reference_price']['bold'])
+        ref_price_font = get_font(
+            positions['reference_price']['font_size'], 
+            bold=positions['reference_price'].get('bold', False),
+            italic=positions['reference_price'].get('italic', False)
+        )
         
-        # Colores (ajustar según la plantilla)
-        text_color = (34, 34, 34)  # Dark grey/black
-        dark_green = (34, 139, 34)  # Dark green
+        # Colores basados en el ejemplo de la naranja
+        text_color = (50, 50, 50)  # Gris oscuro para texto normal
+        dark_green = (76, 139, 76)  # Verde oscuro para título
+        price_color = (0, 0, 0)  # Negro para el precio
         
-        # Calcular posiciones usando la configuración
-        def calculate_x(pos_config, text_width):
-            """Calcula la posición X"""
-            if pos_config['x'] == 'center':
-                return (width - text_width) // 2
-            elif isinstance(pos_config['x'], (int, float)):
-                return int(pos_config['x'])
-            else:
-                return (width - text_width) // 2  # Fallback a center
+        # Obtener posiciones en píxeles directamente
+        title_y = int(positions['title']['y'])
+        product_y = int(positions['product_name']['y'])
+        price_y = int(positions['price']['y'])
+        product_image_y = int(positions['product_image']['y'])
+        ref_price_y = int(positions['reference_price']['y'])
         
-        def calculate_y(pos_config):
-            """Calcula la posición Y"""
-            if isinstance(pos_config['y'], (int, float)):
-                if 0 <= pos_config['y'] <= 1:
-                    # Es un porcentaje
-                    return int(height * pos_config['y'])
-                else:
-                    # Es un valor en píxeles
-                    return int(pos_config['y'])
-            return int(height * 0.5)  # Fallback
-        
-        title_y = calculate_y(positions['title'])
-        product_y = calculate_y(positions['product_name'])
-        price_y = calculate_y(positions['price'])
-        product_image_y = calculate_y(positions['product_image'])
-        ref_price_y = calculate_y(positions['reference_price'])
+        # Función para centrar texto
+        def center_text(text, font, y_position, color):
+            """Dibuja texto centrado"""
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_width = bbox[2] - bbox[0]
+            x_position = (width - text_width) // 2
+            draw.text((x_position, y_position), text, fill=color, font=font)
+            print(f"  Dibujando '{text}' en posición ({x_position}, {y_position})")
         
         # Dibujar título
-        title_bbox = draw.textbbox((0, 0), title, font=title_font)
-        title_width = title_bbox[2] - title_bbox[0]
-        title_x = calculate_x(positions['title'], title_width)
-        draw.text((title_x, title_y), title, fill=dark_green, font=title_font)
+        print(f"Dibujando título: {title}")
+        center_text(title, title_font, title_y, dark_green)
         
-        # Dibujar nombre del producto (sin dos puntos, según los ejemplos)
-        product_text = product_name
-        product_bbox = draw.textbbox((0, 0), product_text, font=product_font)
-        product_width = product_bbox[2] - product_bbox[0]
-        product_x = calculate_x(positions['product_name'], product_width)
-        draw.text((product_x, product_y), product_text, fill=text_color, font=product_font)
+        # Dibujar nombre del producto con dos puntos (como en el ejemplo)
+        product_text = f"{product_name}:"
+        print(f"Dibujando nombre producto: {product_text}")
+        center_text(product_text, product_font, product_y, text_color)
         
-        # Dibujar precio (en la misma línea o justo debajo)
-        price_text = price
-        price_bbox = draw.textbbox((0, 0), price_text, font=price_font)
-        price_width = price_bbox[2] - price_bbox[0]
-        price_x = calculate_x(positions['price'], price_width)
-        draw.text((price_x, price_y), price_text, fill=text_color, font=price_font)
+        # Dibujar precio
+        print(f"Dibujando precio: {price}")
+        center_text(price, price_font, price_y, price_color)
         
         # Descargar y colocar imagen del producto
         print(f"Descargando imagen del producto desde: {product_image_url}")
         product_img = download_image(product_image_url)
         if product_img:
-            print(f"Imagen descargada exitosamente: {product_img.size}")
-            # Redimensionar imagen del producto usando configuración
+            print(f"✓ Imagen descargada exitosamente: {product_img.size}")
+            
+            # Redimensionar imagen del producto - hacerla grande como en el ejemplo
             max_img_width = int(width * positions['product_image']['max_width'])
             max_img_height = int(height * positions['product_image']['max_height'])
-            print(f"Tamaño máximo permitido: {max_img_width}x{max_img_height}")
+            print(f"  Tamaño máximo permitido: {max_img_width}x{max_img_height}")
             
             # Calcular proporciones manteniendo aspect ratio
             img_ratio = product_img.width / product_img.height
             target_ratio = max_img_width / max_img_height
             
             if img_ratio > target_ratio:
+                # La imagen es más ancha que el target
                 new_width = max_img_width
                 new_height = int(max_img_width / img_ratio)
             else:
+                # La imagen es más alta que el target
                 new_height = max_img_height
                 new_width = int(max_img_height * img_ratio)
             
-            print(f"Redimensionando a: {new_width}x{new_height}")
+            print(f"  Redimensionando a: {new_width}x{new_height}")
             product_img = product_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
             
-            # Posicionar imagen usando configuración
-            img_x = calculate_x(positions['product_image'], new_width)
-            img_y = int(product_image_y)
-            print(f"Posicionando imagen en: ({img_x}, {img_y})")
+            # Centrar la imagen horizontalmente y posicionarla verticalmente
+            img_x = (width - new_width) // 2
+            # product_image_y es el centro de donde queremos la imagen, ajustar para que sea la esquina superior
+            img_y = product_image_y - (new_height // 2)
+            print(f"  Posicionando imagen en: ({img_x}, {img_y})")
             
-            # Pegar imagen sobre la plantilla - manejar transparencia correctamente
-            # Si la imagen tiene fondo transparente (RGBA), usar la máscara
+            # Pegar imagen sobre la plantilla
+            # Si la imagen tiene transparencia, usarla como máscara
             if product_img.mode == 'RGBA':
-                # Convertir a RGBA si no lo es para mantener transparencia
-                alpha = product_img.split()[3]  # Canal alpha
-                img.paste(product_img, (img_x, img_y), alpha)  # Usar alpha como máscara
+                img.paste(product_img, (img_x, img_y), product_img)
             else:
-                # Si no tiene transparencia, convertir a RGBA para pegarlo mejor
-                product_img_rgba = product_img.convert('RGBA')
-                img.paste(product_img_rgba, (img_x, img_y), product_img_rgba)
-            print("Imagen del producto pegada exitosamente con transparencia")
+                # Convertir a RGBA y pegar
+                product_img = product_img.convert('RGBA')
+                img.paste(product_img, (img_x, img_y), product_img)
+            
+            print("✓ Imagen del producto pegada exitosamente")
         else:
-            print(f"⚠️ No se pudo descargar la imagen del producto desde: {product_image_url}")
+            print(f"❌ ERROR: No se pudo descargar la imagen del producto desde: {product_image_url}")
+            print(f"   La imagen NO se incluirá en el resultado final")
+            # No retornar None - continuar con el resto de la generación
         
-        # Dibujar precio de referencia
+        # Dibujar precio de referencia en cursiva
         if reference_price:
             ref_text = f"(Precio referencia: {reference_price})"
-            ref_bbox = draw.textbbox((0, 0), ref_text, font=ref_price_font)
-            ref_width = ref_bbox[2] - ref_bbox[0]
-            ref_x = calculate_x(positions['reference_price'], ref_width)
-            draw.text((ref_x, ref_price_y), ref_text, fill=text_color, font=ref_price_font)
+            print(f"Dibujando precio de referencia: {ref_text}")
+            center_text(ref_text, ref_price_font, ref_price_y, text_color)
         
         # Guardar imagen
         if not output_path:
