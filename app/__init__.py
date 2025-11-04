@@ -44,6 +44,8 @@ def create_app() -> Flask:
         from .models.payment import Payment, PaymentApplication  # noqa: F401
         from .models.variant import ProductVariant, VariantPriceTier  # noqa: F401
         from .models.weekly_offer import WeeklyOffer  # noqa: F401
+        # Social media models
+        from .social.models import InstagramContent, WhatsAppMessage, ContentTemplate, SocialSchedule  # noqa: F401
         db.create_all()
 
         from .api.auth import auth_bp
@@ -58,6 +60,8 @@ def create_app() -> Flask:
         from .api.accounting import accounting_bp
         from .api.admin_kpis import admin_kpis_bp
         from .api.weekly_offers import weekly_offers_bp
+        from .social.api.instagram import instagram_bp
+        from .social.api.whatsapp import whatsapp_bp
         app.register_blueprint(auth_bp, url_prefix="/api")
         app.register_blueprint(products_bp, url_prefix="/api")
         app.register_blueprint(backup_bp, url_prefix="/api")
@@ -70,6 +74,8 @@ def create_app() -> Flask:
         app.register_blueprint(accounting_bp, url_prefix="/api")
         app.register_blueprint(admin_kpis_bp, url_prefix="/api")
         app.register_blueprint(weekly_offers_bp, url_prefix="/api")
+        app.register_blueprint(instagram_bp, url_prefix="/api/social")
+        app.register_blueprint(whatsapp_bp, url_prefix="/api/social")
 
     # CLI
     from .cli import register_cli
