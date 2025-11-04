@@ -34,23 +34,33 @@ def generate_weekly_offers_carousel():
     has_dates = _has_date_columns()
     
     def get_offer(type_name):
-        """Obtiene una oferta del tipo especificado"""
+        """Obtiene una oferta del tipo especificado - prioriza las con fecha y la más reciente"""
         if has_dates:
             try:
-                # Intentar obtener oferta con start_date que esté vigente
-                offer_with_date = WeeklyOffer.query.filter_by(type=type_name).filter(
+                # Buscar todas las ofertas con fecha que estén vigentes el próximo lunes
+                offers_with_date = WeeklyOffer.query.filter_by(type=type_name).filter(
                     WeeklyOffer.start_date.isnot(None),
                     WeeklyOffer.start_date <= next_monday
-                ).order_by(desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+                ).all()
                 
-                if offer_with_date:
-                    # Verificar si también tiene end_date y si está vigente
-                    if offer_with_date.end_date is None or offer_with_date.end_date >= next_monday:
-                        return offer_with_date
+                # Filtrar las que estarán vigentes el próximo lunes
+                valid_offers = []
+                for offer in offers_with_date:
+                    if offer.end_date is None or offer.end_date >= next_monday:
+                        valid_offers.append(offer)
+                
+                # Si hay ofertas válidas con fecha, retornar la más reciente
+                if valid_offers:
+                    valid_offers.sort(key=lambda x: x.updated_at, reverse=True)
+                    return valid_offers[0]
+                
+                # Si no hay ofertas con fecha, retornar None (no usar las sin fecha)
+                return None
             except Exception as e:
                 print(f"Error usando columnas de fecha: {e}")
+                return None
         
-        # Si no hay oferta con fecha vigente, usar la más reciente
+        # Si no hay columnas de fecha, retornar la más reciente (comportamiento antiguo)
         return WeeklyOffer.query.filter_by(type=type_name).order_by(desc(WeeklyOffer.updated_at)).first()
     
     fruta = get_offer('fruta')

@@ -34,24 +34,37 @@ def get_weekly_offers():
         has_dates = _has_date_columns()
         
         def get_offer(type_name):
-            # Si las columnas de fecha existen, intentar usarlas
+            # Si las columnas de fecha existen, buscar solo ofertas CON fecha
             if has_dates:
                 try:
-                    # Intentar obtener oferta con start_date vigente
-                    offer_with_date = WeeklyOffer.query.filter_by(type=type_name).filter(
+                    # Buscar todas las ofertas con fecha que estén vigentes HOY
+                    # Priorizar: 1) Que esté vigente (start_date <= today y end_date >= today)
+                    #           2) De las vigentes, la más reciente (updated_at DESC)
+                    offers_with_date = WeeklyOffer.query.filter_by(type=type_name).filter(
                         WeeklyOffer.start_date.isnot(None),
                         WeeklyOffer.start_date <= today
-                    ).order_by(desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+                    ).all()
                     
-                    if offer_with_date:
-                        # Verificar si también tiene end_date y si está vigente
-                        if offer_with_date.end_date is None or offer_with_date.end_date >= today:
-                            return offer_with_date
+                    # Filtrar las que están vigentes (end_date >= today o end_date es None)
+                    valid_offers = []
+                    for offer in offers_with_date:
+                        if offer.end_date is None or offer.end_date >= today:
+                            valid_offers.append(offer)
+                    
+                    # Si hay ofertas válidas con fecha, retornar la más reciente
+                    if valid_offers:
+                        # Ordenar por updated_at DESC para obtener la más reciente
+                        valid_offers.sort(key=lambda x: x.updated_at, reverse=True)
+                        return valid_offers[0]
+                    
+                    # Si no hay ofertas con fecha vigentes, retornar None (no usar las sin fecha)
+                    return None
                 except Exception as e:
                     # Si falla al usar las columnas, continuar sin ellas
                     print(f"Error usando columnas de fecha: {e}")
+                    return None
             
-            # Si no hay oferta con fecha vigente, usar la más reciente
+            # Si no hay columnas de fecha, retornar la más reciente (comportamiento antiguo)
             return WeeklyOffer.query.filter_by(type=type_name).order_by(desc(WeeklyOffer.updated_at)).first()
         
         fruta = get_offer('fruta')
@@ -102,24 +115,33 @@ def get_next_week_offers():
         has_dates = _has_date_columns()
         
         def get_offer(type_name):
-            # Si las columnas de fecha existen, intentar usarlas
+            # Si las columnas de fecha existen, buscar solo ofertas CON fecha
             if has_dates:
                 try:
-                    # Intentar obtener oferta con start_date que esté vigente el próximo lunes
-                    offer_with_date = WeeklyOffer.query.filter_by(type=type_name).filter(
+                    # Buscar todas las ofertas con fecha que estén vigentes el próximo lunes
+                    offers_with_date = WeeklyOffer.query.filter_by(type=type_name).filter(
                         WeeklyOffer.start_date.isnot(None),
                         WeeklyOffer.start_date <= next_monday
-                    ).order_by(desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+                    ).all()
                     
-                    if offer_with_date:
-                        # Verificar si también tiene end_date y si está vigente
-                        if offer_with_date.end_date is None or offer_with_date.end_date >= next_monday:
-                            return offer_with_date
+                    # Filtrar las que estarán vigentes el próximo lunes
+                    valid_offers = []
+                    for offer in offers_with_date:
+                        if offer.end_date is None or offer.end_date >= next_monday:
+                            valid_offers.append(offer)
+                    
+                    # Si hay ofertas válidas con fecha, retornar la más reciente
+                    if valid_offers:
+                        valid_offers.sort(key=lambda x: x.updated_at, reverse=True)
+                        return valid_offers[0]
+                    
+                    # Si no hay ofertas con fecha, retornar None
+                    return None
                 except Exception as e:
-                    # Si falla al usar las columnas, continuar sin ellas
                     print(f"Error usando columnas de fecha: {e}")
+                    return None
             
-            # Si no hay oferta con fecha, usar la más reciente
+            # Si no hay columnas de fecha, retornar la más reciente
             return WeeklyOffer.query.filter_by(type=type_name).order_by(desc(WeeklyOffer.updated_at)).first()
         
         fruta = get_offer('fruta')
