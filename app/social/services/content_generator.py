@@ -29,45 +29,95 @@ def generate_weekly_offers_carousel():
     """
     # Calcular el próximo lunes (fecha de publicación)
     next_monday = get_next_monday()
+    print(f"Generando carrusel para próxima semana - próximo lunes: {next_monday}")
     
     # Verificar si las columnas de fecha existen
     has_dates = _has_date_columns()
+    print(f"Columnas de fecha disponibles: {has_dates}")
     
     def get_offer(type_name):
         """Obtiene una oferta del tipo especificado - prioriza las con fecha y la más reciente"""
+        print(f"Buscando oferta tipo: {type_name} para próximo lunes: {next_monday}")
         if has_dates:
             try:
-                # Buscar todas las ofertas con fecha que estén vigentes el próximo lunes
-                offers_with_date = WeeklyOffer.query.filter_by(type=type_name).filter(
+                # Primero: buscar ofertas que estarán vigentes el próximo lunes (próxima semana)
+                offers_for_next_week = WeeklyOffer.query.filter_by(type=type_name).filter(
                     WeeklyOffer.start_date.isnot(None),
                     WeeklyOffer.start_date <= next_monday
                 ).all()
                 
+                print(f"  Encontradas {len(offers_for_next_week)} ofertas con start_date <= próximo_lunes")
+                
                 # Filtrar las que estarán vigentes el próximo lunes
                 valid_offers = []
-                for offer in offers_with_date:
-                    if offer.end_date is None or offer.end_date >= next_monday:
+                for offer in offers_for_next_week:
+                    is_valid = offer.end_date is None or offer.end_date >= next_monday
+                    print(f"  Oferta ID={offer.id}: start={offer.start_date}, end={offer.end_date}, válida={is_valid}")
+                    if is_valid:
                         valid_offers.append(offer)
                 
-                # Si hay ofertas válidas con fecha, retornar la más reciente
+                # Si hay ofertas válidas para próxima semana, retornar la más reciente
                 if valid_offers:
                     valid_offers.sort(key=lambda x: x.updated_at, reverse=True)
-                    return valid_offers[0]
+                    selected = valid_offers[0]
+                    print(f"  ✓ Seleccionada oferta ID={selected.id} para próxima semana (más reciente de {len(valid_offers)} válidas)")
+                    return selected
                 
-                # Si no hay ofertas con fecha, retornar None (no usar las sin fecha)
+                # Si no hay ofertas para próxima semana, buscar ofertas de esta semana que aún estén vigentes
+                print(f"  No hay ofertas para próxima semana, buscando ofertas de esta semana...")
+                today = datetime.now()
+                # Calcular lunes de esta semana
+                days_since_monday = today.weekday()
+                this_monday = today - timedelta(days=days_since_monday)
+                this_monday = this_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+                this_sunday = this_monday + timedelta(days=6, hours=23, minutes=59, seconds=59)
+                
+                offers_for_this_week = WeeklyOffer.query.filter_by(type=type_name).filter(
+                    WeeklyOffer.start_date.isnot(None),
+                    WeeklyOffer.start_date <= this_sunday,
+                    WeeklyOffer.end_date >= this_monday
+                ).all()
+                
+                print(f"  Encontradas {len(offers_for_this_week)} ofertas para esta semana")
+                
+                if offers_for_this_week:
+                    # Filtrar las que aún están vigentes hoy
+                    current_week_valid = []
+                    for offer in offers_for_this_week:
+                        is_valid_today = offer.start_date <= today and (offer.end_date is None or offer.end_date >= today)
+                        if is_valid_today:
+                            current_week_valid.append(offer)
+                    
+                    if current_week_valid:
+                        current_week_valid.sort(key=lambda x: x.updated_at, reverse=True)
+                        selected = current_week_valid[0]
+                        print(f"  ✓ Seleccionada oferta ID={selected.id} de esta semana (más reciente de {len(current_week_valid)} válidas)")
+                        return selected
+                
+                print(f"  ✗ No hay ofertas válidas con fecha para {type_name}")
                 return None
             except Exception as e:
                 print(f"Error usando columnas de fecha: {e}")
+                import traceback
+                traceback.print_exc()
                 return None
         
         # Si no hay columnas de fecha, retornar la más reciente (comportamiento antiguo)
-        return WeeklyOffer.query.filter_by(type=type_name).order_by(desc(WeeklyOffer.updated_at)).first()
+        offer = WeeklyOffer.query.filter_by(type=type_name).order_by(desc(WeeklyOffer.updated_at)).first()
+        if offer:
+            print(f"  ✓ Usando oferta sin fecha ID={offer.id} (comportamiento antiguo)")
+        else:
+            print(f"  ✗ No hay ofertas para {type_name}")
+        return offer
     
     fruta = get_offer('fruta')
     verdura = get_offer('verdura')
     especial = get_offer('especial')
     
+    print(f"Resultado: fruta={fruta is not None}, verdura={verdura is not None}, especial={especial is not None}")
+    
     if not fruta or not verdura or not especial:
+        print("❌ No se pueden generar ofertas - faltan una o más ofertas")
         return None
     
     # Descripción por defecto para el carrusel (editables)

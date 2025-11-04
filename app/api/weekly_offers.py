@@ -45,23 +45,32 @@ def get_weekly_offers():
                         WeeklyOffer.start_date <= today
                     ).all()
                     
+                    print(f"get_weekly_offers - {type_name}: Encontradas {len(offers_with_date)} ofertas con start_date <= hoy")
+                    
                     # Filtrar las que están vigentes (end_date >= today o end_date es None)
                     valid_offers = []
                     for offer in offers_with_date:
-                        if offer.end_date is None or offer.end_date >= today:
+                        is_valid = offer.end_date is None or offer.end_date >= today
+                        if is_valid:
                             valid_offers.append(offer)
+                            print(f"  Oferta ID={offer.id} válida: start={offer.start_date}, end={offer.end_date}, updated={offer.updated_at}")
                     
                     # Si hay ofertas válidas con fecha, retornar la más reciente
                     if valid_offers:
                         # Ordenar por updated_at DESC para obtener la más reciente
                         valid_offers.sort(key=lambda x: x.updated_at, reverse=True)
-                        return valid_offers[0]
+                        selected = valid_offers[0]
+                        print(f"  ✓ Seleccionada oferta ID={selected.id} para {type_name}")
+                        return selected
                     
+                    print(f"  ✗ No hay ofertas válidas con fecha para {type_name}")
                     # Si no hay ofertas con fecha vigentes, retornar None (no usar las sin fecha)
                     return None
                 except Exception as e:
                     # Si falla al usar las columnas, continuar sin ellas
                     print(f"Error usando columnas de fecha: {e}")
+                    import traceback
+                    traceback.print_exc()
                     return None
             
             # Si no hay columnas de fecha, retornar la más reciente (comportamiento antiguo)
@@ -94,6 +103,59 @@ def get_weekly_offers():
             return jsonify({"error": "Error al obtener ofertas", "details": str(e)}), 500
 
 
+@weekly_offers_bp.get("/weekly-offers/debug")
+@require_token
+def debug_weekly_offers():
+    """Endpoint de diagnóstico para ver todas las ofertas y sus fechas"""
+    from sqlalchemy import text
+    
+    try:
+        has_dates = _has_date_columns()
+        today = datetime.now()
+        
+        # Obtener todas las ofertas
+        all_offers = WeeklyOffer.query.all()
+        
+        debug_info = {
+            "has_date_columns": has_dates,
+            "today": today.isoformat(),
+            "total_offers": len(all_offers),
+            "offers_by_type": {}
+        }
+        
+        for offer_type in ['fruta', 'verdura', 'especial']:
+            offers = WeeklyOffer.query.filter_by(type=offer_type).all()
+            debug_info["offers_by_type"][offer_type] = []
+            
+            for offer in offers:
+                start_date = getattr(offer, 'start_date', None)
+                end_date = getattr(offer, 'end_date', None)
+                
+                is_valid_today = False
+                if start_date:
+                    is_valid_today = start_date <= today and (end_date is None or end_date >= today)
+                
+                debug_info["offers_by_type"][offer_type].append({
+                    "id": offer.id,
+                    "product_id": offer.product_id,
+                    "product_name": offer.product.name if offer.product else None,
+                    "price": offer.price,
+                    "start_date": start_date.isoformat() if start_date else None,
+                    "end_date": end_date.isoformat() if end_date else None,
+                    "created_at": offer.created_at.isoformat() if offer.created_at else None,
+                    "updated_at": offer.updated_at.isoformat() if offer.updated_at else None,
+                    "is_valid_today": is_valid_today
+                })
+        
+        return jsonify(debug_info)
+    except Exception as e:
+        import traceback
+        return jsonify({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
 @weekly_offers_bp.get("/weekly-offers/next-week")
 @require_token
 def get_next_week_offers():
@@ -104,13 +166,15 @@ def get_next_week_offers():
     from datetime import timedelta
     
     try:
-        # Calcular el próximo lunes
+        # Calcular el próximo lunes (misma lógica que get_next_monday en content_generator)
         today = datetime.now()
         days_until_monday = (7 - today.weekday()) % 7
         if days_until_monday == 0:
+            # Si ya es lunes, usar el próximo lunes
             days_until_monday = 7
         next_monday = today + timedelta(days=days_until_monday)
-        next_monday = next_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+        next_monday = next_monday.replace(hour=8, minute=0, second=0, microsecond=0)
+        print(f"get_next_week_offers - próximo lunes calculado: {next_monday}")
         
         has_dates = _has_date_columns()
         
@@ -244,39 +308,49 @@ def create_or_update_weekly_offer():
     existing = None
     if has_dates:
         try:
-            # Buscar ofertas que se solapen con esta semana
-            existing = WeeklyOffer.query.filter_by(type=offer_type).filter(
+            # Buscar ofertas que se solapen con esta semana (solo las que tienen fecha)
+            overlapping_offers = WeeklyOffer.query.filter_by(type=offer_type).filter(
+                WeeklyOffer.start_date.isnot(None),
                 WeeklyOffer.start_date <= week_sunday,
                 WeeklyOffer.end_date >= week_monday
-            ).first()
+            ).all()
             
-            # Si no hay solapamiento, buscar la más reciente
-            if not existing:
-                existing = WeeklyOffer.query.filter_by(type=offer_type).order_by(
-                    WeeklyOffer.updated_at.desc()
-                ).first()
-        except Exception:
-            # Fallback: buscar la más reciente
-            existing = WeeklyOffer.query.filter_by(type=offer_type).order_by(
-                WeeklyOffer.updated_at.desc()
-            ).first()
+            if overlapping_offers:
+                # Si hay solapamiento, usar la más reciente
+                overlapping_offers.sort(key=lambda x: x.updated_at, reverse=True)
+                existing = overlapping_offers[0]
+                print(f"Encontrada oferta existente que se solapa: ID={existing.id}, start={existing.start_date}, end={existing.end_date}")
+            
+            # Si no hay solapamiento, NO buscar ofertas sin fecha - crear nueva
+            # Esto evita que se actualicen ofertas antiguas sin fecha
+        except Exception as e:
+            print(f"Error buscando ofertas existentes: {e}")
+            import traceback
+            traceback.print_exc()
+            # Si falla, no actualizar nada - crear nueva
+            existing = None
     else:
+        # Si no hay columnas de fecha, buscar la más reciente (comportamiento antiguo)
         existing = WeeklyOffer.query.filter_by(type=offer_type).order_by(
             WeeklyOffer.updated_at.desc()
         ).first()
     
     if existing:
         # Actualizar la existente
+        print(f"Actualizando oferta existente ID={existing.id} para {week_target}")
         existing.product_id = product_id
         existing.price = data.get("price", existing.price)
         existing.reference_price = data.get("reference_price", existing.reference_price)
         if has_dates:
             existing.start_date = start_date
             existing.end_date = end_date
+        existing.updated_at = datetime.now()  # Forzar actualización de timestamp
         db.session.commit()
+        print(f"Oferta actualizada: ID={existing.id}, start={existing.start_date}, end={existing.end_date}")
         return jsonify(existing.to_dict())
     else:
         # Crear nueva
+        print(f"Creando nueva oferta tipo={offer_type}, week_target={week_target}, start={start_date}, end={end_date}")
         offer_data = {
             "type": offer_type,
             "product_id": product_id,
@@ -290,5 +364,6 @@ def create_or_update_weekly_offer():
         offer = WeeklyOffer(**offer_data)
         db.session.add(offer)
         db.session.commit()
+        print(f"Nueva oferta creada: ID={offer.id}, start={offer.start_date}, end={offer.end_date}")
         return jsonify(offer.to_dict()), 201
 
