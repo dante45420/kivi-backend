@@ -243,8 +243,9 @@ def serve_generated_image(filename):
 
 @instagram_bp.get("/instagram/generated-image/<path:filename>/download")
 def download_generated_image(filename):
-    """Descarga una imagen generada"""
+    """Descarga una imagen generada como PNG"""
     import os
+    from flask import Response
     
     # Obtener el directorio de imágenes generadas
     current_file_dir = os.path.dirname(os.path.abspath(__file__))
@@ -252,13 +253,19 @@ def download_generated_image(filename):
     backend_root = os.path.abspath(backend_root)
     generated_dir = os.path.join(backend_root, 'generated_images')
     
-    # Sanitizar el filename
+    # Sanitizar el filename - remover /download si está en el path
+    filename = filename.replace('/download', '')
     filename = os.path.basename(filename)
     image_path = os.path.join(generated_dir, filename)
     
+    print(f"Descargando imagen: {filename} desde {image_path}")
+    
     # Verificar que existe
     if not os.path.exists(image_path):
-        return jsonify({"error": "Imagen no encontrada"}), 404
+        print(f"❌ Imagen no encontrada: {image_path}")
+        print(f"   Directorio: {generated_dir}")
+        print(f"   Archivos disponibles: {os.listdir(generated_dir) if os.path.exists(generated_dir) else 'No existe'}")
+        return jsonify({"error": "Imagen no encontrada", "path": image_path}), 404
     
     # Verificar path traversal
     real_generated_dir = os.path.realpath(generated_dir)
@@ -266,5 +273,18 @@ def download_generated_image(filename):
     if not real_image_path.startswith(real_generated_dir):
         return jsonify({"error": "Acceso denegado"}), 403
     
-    return send_file(image_path, mimetype='image/png', as_attachment=True, download_name=filename)
+    # Enviar como descarga con headers correctos para PNG
+    response = send_file(
+        image_path, 
+        mimetype='image/png',
+        as_attachment=True,
+        download_name=filename
+    )
+    
+    # Asegurar headers correctos para descarga PNG
+    response.headers['Content-Type'] = 'image/png'
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    print(f"✅ Imagen enviada para descarga: {filename}")
+    return response
 
