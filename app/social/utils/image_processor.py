@@ -209,34 +209,38 @@ def generate_offer_image(
         print(f"Dibujando título: {title}")
         center_text(title, title_font, title_y, kivi_green)
         
-        # Dibujar nombre y precio EN LA MISMA LÍNEA (lado a lado)
+        # Dibujar nombre y precio como UNA SOLA ORACIÓN centrada
+        # MISMO tamaño de letra, solo el precio en negrita
         product_text = f"{product_name}:"
-        price_text = price
+        price_text = f" {price}"  # Espacio antes del precio
         
-        # Calcular anchos para centrarlos juntos
-        product_bbox = draw.textbbox((0, 0), product_text, font=product_font)
-        product_width = product_bbox[2] - product_bbox[0]
+        # Calcular ancho de la oración completa usando fuente normal
+        # (para calcular posición inicial)
+        full_text = product_text + price_text
+        temp_bbox = draw.textbbox((0, 0), full_text, font=product_font)
         
+        # Calcular anchos individuales para posicionar cada parte
+        name_bbox = draw.textbbox((0, 0), product_text, font=product_font)
+        name_width = name_bbox[2] - name_bbox[0]
+        
+        # Ancho del precio con fuente negrita
         price_bbox = draw.textbbox((0, 0), price_text, font=price_font)
         price_width = price_bbox[2] - price_bbox[0]
         
-        # Espacio entre nombre y precio
-        gap = 30
+        # Ancho total de la oración completa
+        total_width = name_width + price_width
         
-        # Ancho total del conjunto (nombre + gap + precio)
-        total_width = product_width + gap + price_width
-        
-        # Calcular posición X para centrar el conjunto completo
+        # Calcular posición X inicial para centrar toda la oración
         start_x = (width - total_width) // 2
         
-        # Dibujar nombre a la izquierda
+        # Dibujar nombre (fuente normal)
         name_x = start_x
-        print(f"Dibujando nombre: {product_text} en ({name_x}, {product_y})")
+        print(f"Dibujando nombre: '{product_text}' en ({name_x}, {product_y})")
         draw.text((name_x, product_y), product_text, fill=black_color, font=product_font)
         
-        # Dibujar precio a la derecha (negrita)
-        price_x = start_x + product_width + gap
-        print(f"Dibujando precio: {price_text} en ({price_x}, {price_y})")
+        # Dibujar precio inmediatamente después (fuente NEGRITA)
+        price_x = start_x + name_width
+        print(f"Dibujando precio: '{price_text}' en ({price_x}, {price_y})")
         draw.text((price_x, price_y), price_text, fill=black_color, font=price_font)
         
         # Descargar y colocar imagen del producto
