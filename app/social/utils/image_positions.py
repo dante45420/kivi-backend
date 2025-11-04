@@ -4,35 +4,37 @@ Configuración de posiciones de texto en la plantilla de ofertas
 import json
 import os
 
+# Posiciones basadas en plantilla de 1080x1350 píxeles
+# Basado en los ejemplos proporcionados por el usuario
 DEFAULT_POSITIONS = {
     "title": {
-        "x": "center",  # "center" o número en píxeles
-        "y": 0.25,  # Porcentaje de altura (0.0 a 1.0)
-        "font_size": 60,
+        "x": "center",
+        "y": 0.20,  # Aproximadamente 270px desde arriba (después del logo)
+        "font_size": 50,
         "bold": True
     },
     "product_name": {
         "x": "center",
-        "y": 0.35,
-        "font_size": 50,
+        "y": 0.28,  # Aproximadamente 378px desde arriba
+        "font_size": 42,
         "bold": True
     },
     "price": {
         "x": "center",
-        "y": 0.45,
-        "font_size": 45,
+        "y": 0.32,  # Aproximadamente 432px desde arriba (justo después del nombre)
+        "font_size": 40,
         "bold": True
     },
     "product_image": {
         "x": "center",
-        "y": 0.50,
-        "max_width": 0.6,  # Porcentaje del ancho
-        "max_height": 0.3  # Porcentaje de la altura
+        "y": 0.40,  # Aproximadamente 540px desde arriba (centro de la imagen)
+        "max_width": 0.65,  # 65% del ancho de la plantilla
+        "max_height": 0.35  # 35% de la altura de la plantilla
     },
     "reference_price": {
         "x": "center",
-        "y": 0.80,
-        "font_size": 35,
+        "y": 0.75,  # Aproximadamente 1012px desde arriba (abajo, antes del contacto)
+        "font_size": 28,
         "bold": False
     }
 }

@@ -145,14 +145,14 @@ def generate_offer_image(
         title_x = calculate_x(positions['title'], title_width)
         draw.text((title_x, title_y), title, fill=dark_green, font=title_font)
         
-        # Dibujar nombre del producto
-        product_text = f"{product_name}:"
+        # Dibujar nombre del producto (sin dos puntos, según los ejemplos)
+        product_text = product_name
         product_bbox = draw.textbbox((0, 0), product_text, font=product_font)
         product_width = product_bbox[2] - product_bbox[0]
         product_x = calculate_x(positions['product_name'], product_width)
         draw.text((product_x, product_y), product_text, fill=text_color, font=product_font)
         
-        # Dibujar precio
+        # Dibujar precio (en la misma línea o justo debajo)
         price_text = price
         price_bbox = draw.textbbox((0, 0), price_text, font=price_font)
         price_width = price_bbox[2] - price_bbox[0]
@@ -160,11 +160,14 @@ def generate_offer_image(
         draw.text((price_x, price_y), price_text, fill=text_color, font=price_font)
         
         # Descargar y colocar imagen del producto
+        print(f"Descargando imagen del producto desde: {product_image_url}")
         product_img = download_image(product_image_url)
         if product_img:
+            print(f"Imagen descargada exitosamente: {product_img.size}")
             # Redimensionar imagen del producto usando configuración
             max_img_width = int(width * positions['product_image']['max_width'])
             max_img_height = int(height * positions['product_image']['max_height'])
+            print(f"Tamaño máximo permitido: {max_img_width}x{max_img_height}")
             
             # Calcular proporciones manteniendo aspect ratio
             img_ratio = product_img.width / product_img.height
@@ -177,14 +180,22 @@ def generate_offer_image(
                 new_height = max_img_height
                 new_width = int(max_img_height * img_ratio)
             
+            print(f"Redimensionando a: {new_width}x{new_height}")
             product_img = product_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
             
             # Posicionar imagen usando configuración
             img_x = calculate_x(positions['product_image'], new_width)
             img_y = int(product_image_y)
+            print(f"Posicionando imagen en: ({img_x}, {img_y})")
             
-            # Pegar imagen sobre la plantilla
-            img.paste(product_img, (img_x, img_y), product_img)
+            # Pegar imagen sobre la plantilla (usar RGBA para mantener transparencia si existe)
+            if product_img.mode == 'RGBA':
+                img.paste(product_img, (img_x, img_y), product_img)
+            else:
+                img.paste(product_img, (img_x, img_y))
+            print("Imagen del producto pegada exitosamente")
+        else:
+            print(f"⚠️ No se pudo descargar la imagen del producto desde: {product_image_url}")
         
         # Dibujar precio de referencia
         if reference_price:
@@ -196,19 +207,28 @@ def generate_offer_image(
         
         # Guardar imagen
         if not output_path:
-            # Crear directorio temporal si no existe
-            output_dir = os.path.join(os.path.dirname(template_path), '..', '..', '..', 'generated_images')
+            # Crear directorio de imágenes generadas en la raíz del backend
+            # Desde: backend/app/social/utils/image_processor.py
+            # Hacia: backend/generated_images
+            current_file_dir = os.path.dirname(os.path.abspath(__file__))
+            # current_file_dir = backend/app/social/utils
+            # Necesitamos ir a backend/generated_images
+            backend_root = os.path.join(current_file_dir, '..', '..', '..')
+            backend_root = os.path.abspath(backend_root)
+            output_dir = os.path.join(backend_root, 'generated_images')
             os.makedirs(output_dir, exist_ok=True)
-            output_path = os.path.join(
-                output_dir,
-                f"oferta_{offer_type}_{product_name.replace(' ', '_').lower()}.png"
-            )
+            
+            # Nombre de archivo único basado en tipo y nombre del producto
+            safe_product_name = product_name.replace(' ', '_').replace('/', '_').lower()
+            filename = f"oferta_{offer_type}_{safe_product_name}.png"
+            output_path = os.path.join(output_dir, filename)
         
         # Convertir a RGB para guardar como PNG
         final_img = Image.new('RGB', img.size, (255, 255, 255))
         final_img.paste(img, mask=img.split()[3] if img.mode == 'RGBA' else None)
         final_img.save(output_path, 'PNG', quality=95)
         
+        print(f"✅ Imagen generada y guardada en: {output_path}")
         return output_path
         
     except Exception as e:

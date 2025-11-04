@@ -209,11 +209,19 @@ def update_image_positions():
 @instagram_bp.get("/instagram/generated-image/<path:filename>")
 def serve_generated_image(filename):
     """Sirve imágenes generadas desde el directorio de imágenes generadas"""
-    from ..utils.image_processor import get_template_path
+    import os
     
-    # Obtener el directorio de imágenes generadas
-    template_path = get_template_path()
-    generated_dir = os.path.join(os.path.dirname(template_path), '..', '..', '..', 'generated_images')
+    # Obtener el directorio de imágenes generadas en la raíz del backend
+    # Desde: backend/app/social/api/instagram.py
+    # Hacia: backend/generated_images
+    current_file_dir = os.path.dirname(os.path.abspath(__file__))
+    # current_file_dir = backend/app/social/api
+    backend_root = os.path.join(current_file_dir, '..', '..', '..')
+    backend_root = os.path.abspath(backend_root)
+    generated_dir = os.path.join(backend_root, 'generated_images')
+    
+    # Sanitizar el filename para evitar path traversal
+    filename = os.path.basename(filename)
     image_path = os.path.join(generated_dir, filename)
     
     # Verificar que el archivo existe y está dentro del directorio permitido

@@ -18,18 +18,16 @@ with app.app_context():
 "
 
 echo "Ejecutando migraciones..."
-python migrate_add_category.py 2>/dev/null || echo "Migración ya aplicada o error menor"
+# Migraciones de estructura (solo agregan columnas/tablas, no borran datos)
 python migrate_add_original_order_id.py 2>/dev/null || echo "Migración ya aplicada o error menor"
-python migrate_add_merchant_system.py 2>/dev/null || echo "Migración ya aplicada o error menor"
 python migrate_add_users_and_vendors.py 2>/dev/null || echo "Migración ya aplicada o error menor"
 python migrate_add_vendor_system.py 2>/dev/null || echo "Migración ya aplicada o error menor"
-python migrate_add_weekly_offers.py 2>/dev/null || echo "Migración ya aplicada o error menor"
-python migrate_update_weekly_offers_product_id.py 2>/dev/null || echo "Migración ya aplicada o error menor"
+# Migración de weekly_offers - solo agrega columnas si no existen, NO borra datos
 python migrate_add_weekly_offer_dates.py 2>/dev/null || echo "Migración ya aplicada o error menor"
+# Migración de social tables - solo crea tablas si no existen
 python migrate_add_social_tables.py 2>/dev/null || echo "Migración ya aplicada o error menor"
-
-echo "Creando usuario comerciante de prueba..."
-python migrate_create_test_merchant.py 2>/dev/null || echo "Usuario ya existe o error menor"
+# NOTA: migrate_update_weekly_offers_product_id.py NO se ejecuta automáticamente
+# porque podría borrar datos. Solo ejecutar manualmente si es necesario.
 
 echo "Build completado!"
 

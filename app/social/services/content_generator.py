@@ -156,6 +156,9 @@ def generate_weekly_offers_carousel():
             # Convertir la ruta local a una URL accesible
             filename = os.path.basename(generated_image_path)
             image_url = f"/api/social/instagram/generated-image/{filename}"
+            print(f"✅ Imagen generada encontrada: {filename} -> {image_url}")
+        else:
+            print(f"⚠️ Imagen generada no encontrada: {generated_image_path}")
         
         media_urls.append({
             "type": "image",
@@ -185,6 +188,9 @@ def generate_weekly_offers_carousel():
             # Convertir la ruta local a una URL accesible
             filename = os.path.basename(generated_image_path)
             image_url = f"/api/social/instagram/generated-image/{filename}"
+            print(f"✅ Imagen generada encontrada: {filename} -> {image_url}")
+        else:
+            print(f"⚠️ Imagen generada no encontrada: {generated_image_path}")
         
         media_urls.append({
             "type": "image",
@@ -214,6 +220,9 @@ def generate_weekly_offers_carousel():
             # Convertir la ruta local a una URL accesible
             filename = os.path.basename(generated_image_path)
             image_url = f"/api/social/instagram/generated-image/{filename}"
+            print(f"✅ Imagen generada encontrada: {filename} -> {image_url}")
+        else:
+            print(f"⚠️ Imagen generada no encontrada: {generated_image_path}")
         
         media_urls.append({
             "type": "image",
