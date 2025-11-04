@@ -20,6 +20,11 @@ class WeeklyOffer(db.Model):
 
     def to_dict(self) -> dict:
         product_data = self.product.to_dict() if self.product else None
+        
+        # Usar getattr para manejar el caso cuando las columnas no existen
+        start_date = getattr(self, 'start_date', None)
+        end_date = getattr(self, 'end_date', None)
+        
         return {
             "id": self.id,
             "type": self.type,
@@ -27,8 +32,8 @@ class WeeklyOffer(db.Model):
             "product": product_data,
             "price": self.price,
             "reference_price": self.reference_price,
-            "start_date": self.start_date.isoformat() if self.start_date else None,
-            "end_date": self.end_date.isoformat() if self.end_date else None,
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

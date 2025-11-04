@@ -19,33 +19,37 @@ app = create_app()
 with app.app_context():
     print("Agregando campos start_date y end_date a weekly_offers...")
     try:
-        engine = db.engine
+        from sqlalchemy import text
         
         # Agregar columna start_date si no existe
         try:
-            engine.execute("""
-                ALTER TABLE weekly_offers 
-                ADD COLUMN start_date DATETIME
-            """)
+            with db.engine.connect() as conn:
+                conn.execute(text("""
+                    ALTER TABLE weekly_offers 
+                    ADD COLUMN start_date TIMESTAMP
+                """))
+                conn.commit()
             print("   ✓ Columna start_date agregada")
         except Exception as e:
-            if "duplicate column" in str(e).lower() or "already exists" in str(e).lower():
+            if "duplicate column" in str(e).lower() or "already exists" in str(e).lower() or "column" in str(e).lower() and "already exists" in str(e).lower():
                 print("   ℹ️ Columna start_date ya existe")
             else:
-                raise
+                print(f"   ⚠ Error agregando start_date: {e}")
         
         # Agregar columna end_date si no existe
         try:
-            engine.execute("""
-                ALTER TABLE weekly_offers 
-                ADD COLUMN end_date DATETIME
-            """)
+            with db.engine.connect() as conn:
+                conn.execute(text("""
+                    ALTER TABLE weekly_offers 
+                    ADD COLUMN end_date TIMESTAMP
+                """))
+                conn.commit()
             print("   ✓ Columna end_date agregada")
         except Exception as e:
-            if "duplicate column" in str(e).lower() or "already exists" in str(e).lower():
+            if "duplicate column" in str(e).lower() or "already exists" in str(e).lower() or "column" in str(e).lower() and "already exists" in str(e).lower():
                 print("   ℹ️ Columna end_date ya existe")
             else:
-                raise
+                print(f"   ⚠ Error agregando end_date: {e}")
         
         print("\n✅ Migración completada exitosamente!")
         print("\n📝 Notas:")
@@ -53,6 +57,6 @@ with app.app_context():
         print("   - Si no se especifican fechas, se usarán las ofertas más recientes")
         
     except Exception as e:
-        print(f"⚠ Error: {e}")
+        print(f"⚠ Error general: {e}")
         print("   Si las columnas ya existen, puedes ignorar este error")
 

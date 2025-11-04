@@ -4,9 +4,22 @@ from ..db import db
 from ..models.weekly_offer import WeeklyOffer
 from ..models.product import Product
 from .auth import require_token
+from sqlalchemy import inspect, desc
+import traceback
 
 
 weekly_offers_bp = Blueprint("weekly_offers", __name__)
+
+
+def _has_date_columns():
+    """Verifica si las columnas start_date y end_date existen en la tabla weekly_offers"""
+    try:
+        inspector = inspect(db.engine)
+        columns = [col['name'] for col in inspector.get_columns('weekly_offers')]
+        return 'start_date' in columns and 'end_date' in columns
+    except Exception as e:
+        print(f"Error verificando columnas: {e}")
+        return False
 
 
 @weekly_offers_bp.get("/weekly-offers")
@@ -16,24 +29,27 @@ def get_weekly_offers():
     Si hay ofertas con start_date, retorna las que están vigentes.
     Si no, retorna las más recientes.
     """
-    from sqlalchemy import desc
-    import traceback
-    
     try:
         today = datetime.now()
+        has_dates = _has_date_columns()
         
-        # Versión simplificada: primero intentar con fechas, luego sin fechas
         def get_offer(type_name):
-            # Intentar obtener oferta con start_date vigente
-            offer_with_date = WeeklyOffer.query.filter_by(type=type_name).filter(
-                WeeklyOffer.start_date.isnot(None),
-                WeeklyOffer.start_date <= today
-            ).order_by(desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
-            
-            if offer_with_date:
-                # Verificar si también tiene end_date y si está vigente
-                if offer_with_date.end_date is None or offer_with_date.end_date >= today:
-                    return offer_with_date
+            # Si las columnas de fecha existen, intentar usarlas
+            if has_dates:
+                try:
+                    # Intentar obtener oferta con start_date vigente
+                    offer_with_date = WeeklyOffer.query.filter_by(type=type_name).filter(
+                        WeeklyOffer.start_date.isnot(None),
+                        WeeklyOffer.start_date <= today
+                    ).order_by(desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+                    
+                    if offer_with_date:
+                        # Verificar si también tiene end_date y si está vigente
+                        if offer_with_date.end_date is None or offer_with_date.end_date >= today:
+                            return offer_with_date
+                except Exception as e:
+                    # Si falla al usar las columnas, continuar sin ellas
+                    print(f"Error usando columnas de fecha: {e}")
             
             # Si no hay oferta con fecha vigente, usar la más reciente
             return WeeklyOffer.query.filter_by(type=type_name).order_by(desc(WeeklyOffer.updated_at)).first()
@@ -48,7 +64,6 @@ def get_weekly_offers():
             "especial": especial.to_dict() if especial else None
         })
     except Exception as e:
-        import traceback
         error_trace = traceback.format_exc()
         print(f"Error en get_weekly_offers: {error_trace}")
         # Fallback simple: retornar las más recientes sin filtros de fecha
@@ -73,9 +88,7 @@ def get_next_week_offers():
     Obtiene las ofertas semanales que estarán vigentes la próxima semana.
     Útil para planificación y generación de contenido con anticipación.
     """
-    from sqlalchemy import desc
     from datetime import timedelta
-    import traceback
     
     try:
         # Calcular el próximo lunes
@@ -86,17 +99,25 @@ def get_next_week_offers():
         next_monday = today + timedelta(days=days_until_monday)
         next_monday = next_monday.replace(hour=0, minute=0, second=0, microsecond=0)
         
+        has_dates = _has_date_columns()
+        
         def get_offer(type_name):
-            # Intentar obtener oferta con start_date que esté vigente el próximo lunes
-            offer_with_date = WeeklyOffer.query.filter_by(type=type_name).filter(
-                WeeklyOffer.start_date.isnot(None),
-                WeeklyOffer.start_date <= next_monday
-            ).order_by(desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
-            
-            if offer_with_date:
-                # Verificar si también tiene end_date y si está vigente
-                if offer_with_date.end_date is None or offer_with_date.end_date >= next_monday:
-                    return offer_with_date
+            # Si las columnas de fecha existen, intentar usarlas
+            if has_dates:
+                try:
+                    # Intentar obtener oferta con start_date que esté vigente el próximo lunes
+                    offer_with_date = WeeklyOffer.query.filter_by(type=type_name).filter(
+                        WeeklyOffer.start_date.isnot(None),
+                        WeeklyOffer.start_date <= next_monday
+                    ).order_by(desc(WeeklyOffer.start_date), desc(WeeklyOffer.updated_at)).first()
+                    
+                    if offer_with_date:
+                        # Verificar si también tiene end_date y si está vigente
+                        if offer_with_date.end_date is None or offer_with_date.end_date >= next_monday:
+                            return offer_with_date
+                except Exception as e:
+                    # Si falla al usar las columnas, continuar sin ellas
+                    print(f"Error usando columnas de fecha: {e}")
             
             # Si no hay oferta con fecha, usar la más reciente
             return WeeklyOffer.query.filter_by(type=type_name).order_by(desc(WeeklyOffer.updated_at)).first()
@@ -170,27 +191,33 @@ def create_or_update_weekly_offer():
         except:
             end_date = None
     
+    has_dates = _has_date_columns()
+    
     if existing:
         # Actualizar la existente
         existing.product_id = product_id
         existing.price = data.get("price", existing.price)
         existing.reference_price = data.get("reference_price", existing.reference_price)
-        if start_date is not None:
-            existing.start_date = start_date
-        if end_date is not None:
-            existing.end_date = end_date
+        if has_dates:
+            if start_date is not None:
+                existing.start_date = start_date
+            if end_date is not None:
+                existing.end_date = end_date
         db.session.commit()
         return jsonify(existing.to_dict())
     else:
         # Crear nueva
-        offer = WeeklyOffer(
-            type=offer_type,
-            product_id=product_id,
-            price=data.get("price"),
-            reference_price=data.get("reference_price"),
-            start_date=start_date,
-            end_date=end_date
-        )
+        offer_data = {
+            "type": offer_type,
+            "product_id": product_id,
+            "price": data.get("price"),
+            "reference_price": data.get("reference_price")
+        }
+        if has_dates:
+            offer_data["start_date"] = start_date
+            offer_data["end_date"] = end_date
+        
+        offer = WeeklyOffer(**offer_data)
         db.session.add(offer)
         db.session.commit()
         return jsonify(offer.to_dict()), 201
