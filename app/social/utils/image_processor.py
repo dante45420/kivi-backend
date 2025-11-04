@@ -18,12 +18,30 @@ def get_template_path() -> str:
 def download_image(url: str) -> Optional[Image.Image]:
     """Descarga una imagen desde una URL"""
     try:
-        response = requests.get(url, timeout=10)
+        print(f"  Intentando descargar imagen de: {url}")
+        
+        # Headers para simular un navegador
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        
+        response = requests.get(url, timeout=15, headers=headers, allow_redirects=True)
         response.raise_for_status()
+        
+        print(f"  ✓ Respuesta HTTP: {response.status_code}")
+        print(f"  ✓ Tamaño: {len(response.content)} bytes")
+        
         img = Image.open(BytesIO(response.content))
+        print(f"  ✓ Imagen cargada: {img.format} {img.size} {img.mode}")
+        
         return img.convert('RGBA')
+    except requests.exceptions.RequestException as e:
+        print(f"  ❌ Error de red descargando imagen: {e}")
+        print(f"     URL: {url}")
+        return None
     except Exception as e:
-        print(f"Error descargando imagen desde {url}: {e}")
+        print(f"  ❌ Error procesando imagen: {e}")
+        print(f"     URL: {url}")
         return None
 
 
@@ -124,10 +142,11 @@ def generate_offer_image(
             italic=positions['reference_price'].get('italic', False)
         )
         
-        # Colores basados en el ejemplo de la naranja
-        text_color = (50, 50, 50)  # Gris oscuro para texto normal
+        # Colores según especificación del usuario
+        white_color = (255, 255, 255)  # Blanco para nombre del producto
         dark_green = (76, 139, 76)  # Verde oscuro para título
-        price_color = (0, 0, 0)  # Negro para el precio
+        black_color = (0, 0, 0)  # Negro para el precio (negrita)
+        gray_color = (100, 100, 100)  # Gris para precio referencia
         
         # Obtener posiciones en píxeles directamente
         title_y = int(positions['title']['y'])
@@ -145,18 +164,18 @@ def generate_offer_image(
             draw.text((x_position, y_position), text, fill=color, font=font)
             print(f"  Dibujando '{text}' en posición ({x_position}, {y_position})")
         
-        # Dibujar título
+        # Dibujar título (arriba de la línea separadora)
         print(f"Dibujando título: {title}")
         center_text(title, title_font, title_y, dark_green)
         
-        # Dibujar nombre del producto con dos puntos (como en el ejemplo)
+        # Dibujar nombre del producto en BLANCO (abajo de la línea separadora)
         product_text = f"{product_name}:"
         print(f"Dibujando nombre producto: {product_text}")
-        center_text(product_text, product_font, product_y, text_color)
+        center_text(product_text, product_font, product_y, white_color)
         
-        # Dibujar precio
+        # Dibujar precio en NEGRO y NEGRITA
         print(f"Dibujando precio: {price}")
-        center_text(price, price_font, price_y, price_color)
+        center_text(price, price_font, price_y, black_color)
         
         # Descargar y colocar imagen del producto
         print(f"Descargando imagen del producto desde: {product_image_url}")
@@ -206,11 +225,11 @@ def generate_offer_image(
             print(f"   La imagen NO se incluirá en el resultado final")
             # No retornar None - continuar con el resto de la generación
         
-        # Dibujar precio de referencia en cursiva
+        # Dibujar precio de referencia en cursiva y gris
         if reference_price:
             ref_text = f"(Precio referencia: {reference_price})"
             print(f"Dibujando precio de referencia: {ref_text}")
-            center_text(ref_text, ref_price_font, ref_price_y, text_color)
+            center_text(ref_text, ref_price_font, ref_price_y, gray_color)
         
         # Guardar imagen
         if not output_path:

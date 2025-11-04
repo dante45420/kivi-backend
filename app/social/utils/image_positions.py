@@ -5,38 +5,41 @@ import json
 import os
 
 # Posiciones basadas en plantilla de 1080x1350 píxeles
-# Basado en el ejemplo correcto de Naranja proporcionado por el usuario
+# Ajustadas según feedback: título arriba de línea, nombre y precio abajo
 DEFAULT_POSITIONS = {
     "title": {
         "x": "center",
-        "y": 290,  # Justo debajo de la línea horizontal
+        "y": 340,  # ARRIBA de la línea separadora (línea está en ~420px)
         "font_size": 48,
         "bold": True
     },
     "product_name": {
         "x": "center",
-        "y": 360,  # Debajo del título
+        "y": 480,  # ABAJO de la línea separadora
         "font_size": 44,
-        "bold": False
+        "bold": False,
+        "color": "white"  # Nombre en blanco
     },
     "price": {
         "x": "center",
-        "y": 415,  # Justo después del nombre del producto
-        "font_size": 46,
-        "bold": True
+        "y": 540,  # Justo después del nombre del producto
+        "font_size": 48,
+        "bold": True,
+        "color": "black"  # Precio en negro y negrita
     },
     "product_image": {
         "x": "center",
-        "y": 750,  # Centro de la imagen (mucho más grande)
-        "max_width": 0.75,  # 75% del ancho de la plantilla
-        "max_height": 0.45  # 45% de la altura - imagen más grande
+        "y": 820,  # Centro de la imagen - más abajo para dar espacio
+        "max_width": 0.70,  # 70% del ancho de la plantilla
+        "max_height": 0.38  # 38% de la altura
     },
     "reference_price": {
         "x": "center",
-        "y": 1040,  # Abajo, antes del contacto de WhatsApp
-        "font_size": 26,
+        "y": 1080,  # Más abajo, antes del contacto de WhatsApp
+        "font_size": 24,
         "bold": False,
-        "italic": True
+        "italic": True,
+        "color": "gray"
     }
 }
 
