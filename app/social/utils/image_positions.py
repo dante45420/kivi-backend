@@ -5,38 +5,39 @@ import json
 import os
 
 # Posiciones basadas en plantilla de 1080x1350 píxeles
-# Ajustadas según feedback: título arriba de línea, nombre y precio abajo
+# Correcciones finales: fuente redonda, verde Kivi, nombre negro, precio destacado
 DEFAULT_POSITIONS = {
     "title": {
         "x": "center",
-        "y": 340,  # ARRIBA de la línea separadora (línea está en ~420px)
-        "font_size": 48,
-        "bold": True
+        "y": 380,  # Más cerca de la línea separadora (~420px)
+        "font_size": 50,
+        "bold": True,
+        "font_style": "rounded"  # Fuente más redonda
     },
     "product_name": {
         "x": "center",
         "y": 480,  # ABAJO de la línea separadora
-        "font_size": 44,
+        "font_size": 42,
         "bold": False,
-        "color": "white"  # Nombre en blanco
+        "color": "black"  # Nombre en NEGRO (no blanco)
     },
     "price": {
         "x": "center",
-        "y": 540,  # Justo después del nombre del producto
-        "font_size": 48,
+        "y": 535,  # Justo después del nombre del producto
+        "font_size": 52,
         "bold": True,
-        "color": "black"  # Precio en negro y negrita
+        "color": "black"  # Precio en negro NEGRITA destacado
     },
     "product_image": {
         "x": "center",
-        "y": 820,  # Centro de la imagen - más abajo para dar espacio
+        "y": 820,  # Centro de la imagen
         "max_width": 0.70,  # 70% del ancho de la plantilla
         "max_height": 0.38  # 38% de la altura
     },
     "reference_price": {
         "x": "center",
-        "y": 1080,  # Más abajo, antes del contacto de WhatsApp
-        "font_size": 24,
+        "y": 1070,  # Antes del contacto de WhatsApp
+        "font_size": 30,  # Más grande (era 24)
         "bold": False,
         "italic": True,
         "color": "gray"

@@ -142,11 +142,11 @@ def generate_offer_image(
             italic=positions['reference_price'].get('italic', False)
         )
         
-        # Colores según especificación del usuario
-        white_color = (255, 255, 255)  # Blanco para nombre del producto
-        dark_green = (76, 139, 76)  # Verde oscuro para título
-        black_color = (0, 0, 0)  # Negro para el precio (negrita)
-        gray_color = (100, 100, 100)  # Gris para precio referencia
+        # Colores corregidos según feedback
+        # Verde del logo Kivi: RGB(76, 175, 80) aproximadamente
+        kivi_green = (76, 175, 80)  # Verde brillante del logo Kivi
+        black_color = (0, 0, 0)  # Negro para nombre y precio
+        gray_color = (80, 80, 80)  # Gris más oscuro para precio referencia
         
         # Obtener posiciones en píxeles directamente
         title_y = int(positions['title']['y'])
@@ -164,16 +164,16 @@ def generate_offer_image(
             draw.text((x_position, y_position), text, fill=color, font=font)
             print(f"  Dibujando '{text}' en posición ({x_position}, {y_position})")
         
-        # Dibujar título (arriba de la línea separadora)
+        # Dibujar título con verde Kivi (arriba de la línea separadora)
         print(f"Dibujando título: {title}")
-        center_text(title, title_font, title_y, dark_green)
+        center_text(title, title_font, title_y, kivi_green)
         
-        # Dibujar nombre del producto en BLANCO (abajo de la línea separadora)
+        # Dibujar nombre del producto en NEGRO (abajo de la línea separadora)
         product_text = f"{product_name}:"
         print(f"Dibujando nombre producto: {product_text}")
-        center_text(product_text, product_font, product_y, white_color)
+        center_text(product_text, product_font, product_y, black_color)
         
-        # Dibujar precio en NEGRO y NEGRITA
+        # Dibujar precio en NEGRO NEGRITA DESTACADO
         print(f"Dibujando precio: {price}")
         center_text(price, price_font, price_y, black_color)
         

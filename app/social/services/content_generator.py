@@ -140,9 +140,14 @@ def generate_weekly_offers_carousel():
     media_urls = []
     
     # Slide 1: Verdura
+    print(f"Procesando oferta de verdura:")
+    print(f"  - Producto: {verdura.product.name if verdura.product else 'No hay producto'}")
+    print(f"  - quality_photo_url: {verdura.product.quality_photo_url if verdura.product else 'N/A'}")
+    
     if verdura.product and verdura.product.quality_photo_url:
         # Generar imagen usando la plantilla - OBLIGATORIO
-        print(f"Generando imagen para verdura: {verdura.product.name}")
+        print(f"✓ Generando imagen para verdura: {verdura.product.name}")
+        print(f"  URL de imagen: {verdura.product.quality_photo_url}")
         generated_image_path = generate_offer_image(
             offer_type='verdura',
             product_name=verdura.product.name,
