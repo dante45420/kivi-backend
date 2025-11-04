@@ -5,7 +5,7 @@ import json
 import os
 
 # Posiciones basadas en plantilla de 1080x1350 píxeles
-# Correcciones finales: fuente redonda, verde Kivi, nombre negro, precio destacado
+# Nombre y precio en la MISMA línea, precio ref MUCHO más grande
 DEFAULT_POSITIONS = {
     "title": {
         "x": "center",
@@ -15,16 +15,16 @@ DEFAULT_POSITIONS = {
         "font_style": "rounded"  # Fuente más redonda
     },
     "product_name": {
-        "x": "center",
-        "y": 480,  # ABAJO de la línea separadora
+        "x": "left",  # Ahora se posiciona dinámicamente al lado del precio
+        "y": 490,  # MISMA altura que el precio
         "font_size": 42,
         "bold": False,
-        "color": "black"  # Nombre en NEGRO (no blanco)
+        "color": "black"
     },
     "price": {
-        "x": "center",
-        "y": 535,  # Justo después del nombre del producto
-        "font_size": 52,
+        "x": "right",  # Ahora se posiciona dinámicamente al lado del nombre
+        "y": 490,  # MISMA altura que el nombre
+        "font_size": 54,
         "bold": True,
         "color": "black"  # Precio en negro NEGRITA destacado
     },
@@ -36,8 +36,8 @@ DEFAULT_POSITIONS = {
     },
     "reference_price": {
         "x": "center",
-        "y": 1070,  # Antes del contacto de WhatsApp
-        "font_size": 30,  # Más grande (era 24)
+        "y": 1060,  # Antes del contacto de WhatsApp
+        "font_size": 38,  # MUCHO más grande (era 30)
         "bold": False,
         "italic": True,
         "color": "gray"

@@ -2,6 +2,8 @@
 Procesador de imágenes para generar ofertas semanales usando plantilla
 """
 import os
+import base64
+import re
 import requests
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
@@ -16,32 +18,71 @@ def get_template_path() -> str:
 
 
 def download_image(url: str) -> Optional[Image.Image]:
-    """Descarga una imagen desde una URL"""
+    """Descarga una imagen desde una URL o procesa una imagen BASE64"""
     try:
-        print(f"  Intentando descargar imagen de: {url}")
+        if not url:
+            print(f"  ❌ URL vacía o None")
+            return None
         
-        # Headers para simular un navegador
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
+        print(f"  Procesando imagen de: {url[:80]}{'...' if len(url) > 80 else ''}")
         
-        response = requests.get(url, timeout=15, headers=headers, allow_redirects=True)
-        response.raise_for_status()
+        # Detectar si es una imagen BASE64 embebida (data:image/...)
+        if url.startswith('data:image'):
+            print(f"  ℹ️  Detectada imagen BASE64 embebida")
+            
+            # Extraer el tipo de imagen y los datos base64
+            match = re.match(r'data:image/(\w+);base64,(.+)', url)
+            if not match:
+                print(f"  ❌ Formato BASE64 inválido")
+                return None
+            
+            image_type = match.group(1)
+            base64_data = match.group(2)
+            
+            print(f"  ℹ️  Tipo: {image_type}, Tamaño datos: {len(base64_data)} chars")
+            
+            # Decodificar BASE64
+            image_data = base64.b64decode(base64_data)
+            print(f"  ✓ Decodificado: {len(image_data)} bytes")
+            
+            # Abrir imagen desde bytes
+            img = Image.open(BytesIO(image_data))
+            print(f"  ✓ Imagen cargada: {img.format} {img.size} {img.mode}")
+            
+            return img.convert('RGBA')
         
-        print(f"  ✓ Respuesta HTTP: {response.status_code}")
-        print(f"  ✓ Tamaño: {len(response.content)} bytes")
+        # Si es una URL HTTP/HTTPS, descargar normalmente
+        elif url.startswith('http://') or url.startswith('https://'):
+            print(f"  ℹ️  Descargando desde URL HTTP")
+            
+            # Headers para simular un navegador
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            
+            response = requests.get(url, timeout=15, headers=headers, allow_redirects=True)
+            response.raise_for_status()
+            
+            print(f"  ✓ Respuesta HTTP: {response.status_code}")
+            print(f"  ✓ Tamaño: {len(response.content)} bytes")
+            
+            img = Image.open(BytesIO(response.content))
+            print(f"  ✓ Imagen cargada: {img.format} {img.size} {img.mode}")
+            
+            return img.convert('RGBA')
         
-        img = Image.open(BytesIO(response.content))
-        print(f"  ✓ Imagen cargada: {img.format} {img.size} {img.mode}")
-        
-        return img.convert('RGBA')
+        else:
+            print(f"  ❌ Formato de URL no reconocido (debe ser http://, https:// o data:image)")
+            print(f"     URL inicia con: {url[:50]}")
+            return None
+            
     except requests.exceptions.RequestException as e:
         print(f"  ❌ Error de red descargando imagen: {e}")
-        print(f"     URL: {url}")
         return None
     except Exception as e:
         print(f"  ❌ Error procesando imagen: {e}")
-        print(f"     URL: {url}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
@@ -143,8 +184,8 @@ def generate_offer_image(
         )
         
         # Colores corregidos según feedback
-        # Verde del logo Kivi: RGB(76, 175, 80) aproximadamente
-        kivi_green = (76, 175, 80)  # Verde brillante del logo Kivi
+        # Verde oscuro del logo Kivi (el de las letras "K" y "i")
+        kivi_green = (60, 121, 76)  # Verde OSCURO del logo Kivi
         black_color = (0, 0, 0)  # Negro para nombre y precio
         gray_color = (80, 80, 80)  # Gris más oscuro para precio referencia
         
@@ -164,18 +205,39 @@ def generate_offer_image(
             draw.text((x_position, y_position), text, fill=color, font=font)
             print(f"  Dibujando '{text}' en posición ({x_position}, {y_position})")
         
-        # Dibujar título con verde Kivi (arriba de la línea separadora)
+        # Dibujar título con verde Kivi oscuro (arriba de la línea separadora)
         print(f"Dibujando título: {title}")
         center_text(title, title_font, title_y, kivi_green)
         
-        # Dibujar nombre del producto en NEGRO (abajo de la línea separadora)
+        # Dibujar nombre y precio EN LA MISMA LÍNEA (lado a lado)
         product_text = f"{product_name}:"
-        print(f"Dibujando nombre producto: {product_text}")
-        center_text(product_text, product_font, product_y, black_color)
+        price_text = price
         
-        # Dibujar precio en NEGRO NEGRITA DESTACADO
-        print(f"Dibujando precio: {price}")
-        center_text(price, price_font, price_y, black_color)
+        # Calcular anchos para centrarlos juntos
+        product_bbox = draw.textbbox((0, 0), product_text, font=product_font)
+        product_width = product_bbox[2] - product_bbox[0]
+        
+        price_bbox = draw.textbbox((0, 0), price_text, font=price_font)
+        price_width = price_bbox[2] - price_bbox[0]
+        
+        # Espacio entre nombre y precio
+        gap = 30
+        
+        # Ancho total del conjunto (nombre + gap + precio)
+        total_width = product_width + gap + price_width
+        
+        # Calcular posición X para centrar el conjunto completo
+        start_x = (width - total_width) // 2
+        
+        # Dibujar nombre a la izquierda
+        name_x = start_x
+        print(f"Dibujando nombre: {product_text} en ({name_x}, {product_y})")
+        draw.text((name_x, product_y), product_text, fill=black_color, font=product_font)
+        
+        # Dibujar precio a la derecha (negrita)
+        price_x = start_x + product_width + gap
+        print(f"Dibujando precio: {price_text} en ({price_x}, {price_y})")
+        draw.text((price_x, price_y), price_text, fill=black_color, font=price_font)
         
         # Descargar y colocar imagen del producto
         print(f"Descargando imagen del producto desde: {product_image_url}")
