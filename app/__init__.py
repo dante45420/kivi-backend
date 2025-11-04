@@ -19,15 +19,33 @@ def create_app() -> Flask:
          supports_credentials=False,
          max_age=3600)
     
+    # Manejar preflight requests (OPTIONS) explícitamente
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            origin = request.headers.get('Origin')
+            if origin and origin in cfg.cors_origins:
+                from flask import Response
+                response = Response()
+                response.headers['Access-Control-Allow-Origin'] = origin
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Token, X-API-Token'
+                response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+                response.headers['Access-Control-Allow-Credentials'] = 'false'
+                response.headers['Access-Control-Max-Age'] = '3600'
+                return response
+    
     # Asegurar que TODAS las respuestas (incluso errores) tengan headers CORS
     @app.after_request
     def add_cors_headers(response):
         origin = request.headers.get('Origin')
-        if origin and origin in cfg.cors_origins:
-            response.headers['Access-Control-Allow-Origin'] = origin
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Token, X-API-Token'
-            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
-            response.headers['Access-Control-Allow-Credentials'] = 'false'
+        if origin:
+            # Verificar si el origen está en la lista permitida
+            if origin in cfg.cors_origins:
+                response.headers['Access-Control-Allow-Origin'] = origin
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Token, X-API-Token'
+                response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+                response.headers['Access-Control-Allow-Credentials'] = 'false'
+                response.headers['Access-Control-Max-Age'] = '3600'
         return response
 
     db.init_app(app)
