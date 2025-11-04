@@ -106,6 +106,36 @@ def reject_instagram_content(content_id):
     return jsonify(content.to_dict())
 
 
+@instagram_bp.patch("/instagram/content/<int:content_id>")
+@require_token
+def update_instagram_content(content_id):
+    """Actualiza el contenido de Instagram (descripciones, captions, etc.)"""
+    data = request.get_json(silent=True) or {}
+    content = InstagramContent.query.get(content_id)
+    if not content:
+        return jsonify({"error": "Contenido no encontrado"}), 404
+    
+    # Actualizar content_data si se proporciona
+    if "content_data" in data:
+        content.content_data = json.dumps(data["content_data"])
+    
+    # Actualizar media_urls si se proporciona (para editar captions de slides)
+    if "media_urls" in data:
+        content.media_urls = json.dumps(data["media_urls"])
+    
+    # Actualizar full_text si cambió la descripción
+    if "content_data" in data:
+        content_data = data["content_data"]
+        hashtags = content_data.get("hashtags", [])
+        description = content_data.get("description", "")
+        if isinstance(hashtags, list):
+            content_data["full_text"] = f"{description}\n\n{' '.join(hashtags)}"
+        content.content_data = json.dumps(content_data)
+    
+    db.session.commit()
+    return jsonify(content.to_dict())
+
+
 @instagram_bp.get("/instagram/templates")
 @require_token
 def list_templates():

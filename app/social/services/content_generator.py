@@ -12,18 +12,32 @@ from ..models.content_template import ContentTemplate
 
 def generate_weekly_offers_carousel():
     """
-    Genera un carrusel de Instagram con las 3 ofertas semanales
+    Genera un carrusel de Instagram con las 3 ofertas semanales de la PRÓXIMA semana
     """
-    # Obtener las ofertas semanales
-    fruta = WeeklyOffer.query.filter_by(type='fruta').order_by(WeeklyOffer.updated_at.desc()).first()
-    verdura = WeeklyOffer.query.filter_by(type='verdura').order_by(WeeklyOffer.updated_at.desc()).first()
-    especial = WeeklyOffer.query.filter_by(type='especial').order_by(WeeklyOffer.updated_at.desc()).first()
+    # Calcular el próximo lunes (fecha de publicación)
+    next_monday = get_next_monday()
+    
+    # Obtener las ofertas que estarán vigentes el próximo lunes
+    # Si tienen start_date, usar esa lógica; si no, usar las más recientes
+    from sqlalchemy import desc, nullslast
+    
+    fruta = WeeklyOffer.query.filter_by(type='fruta').filter(
+        (WeeklyOffer.start_date <= next_monday) | (WeeklyOffer.start_date.is_(None))
+    ).order_by(nullslast(desc(WeeklyOffer.start_date)), desc(WeeklyOffer.updated_at)).first()
+    
+    verdura = WeeklyOffer.query.filter_by(type='verdura').filter(
+        (WeeklyOffer.start_date <= next_monday) | (WeeklyOffer.start_date.is_(None))
+    ).order_by(nullslast(desc(WeeklyOffer.start_date)), desc(WeeklyOffer.updated_at)).first()
+    
+    especial = WeeklyOffer.query.filter_by(type='especial').filter(
+        (WeeklyOffer.start_date <= next_monday) | (WeeklyOffer.start_date.is_(None))
+    ).order_by(nullslast(desc(WeeklyOffer.start_date)), desc(WeeklyOffer.updated_at)).first()
     
     if not fruta or not verdura or not especial:
         return None
     
-    # Descripción constante para el carrusel
-    description = "🎉 ¡OFERTAS DE LA SEMANA! 🎉\n\nDesliza y descubre nuestras mejores ofertas en frutas y verduras frescas. ¡No te las pierdas! 🛒✨"
+    # Descripción por defecto para el carrusel (editables)
+    default_description = "🎉 ¡OFERTAS DE LA SEMANA! 🎉\n\nDesliza y descubre nuestras mejores ofertas en frutas y verduras frescas. ¡No te las pierdas! 🛒✨"
     
     # Hashtags base
     hashtags = [
@@ -35,7 +49,7 @@ def generate_weekly_offers_carousel():
         "#comidalocal"
     ]
     
-    # URLs de imágenes para cada slide del carrusel
+    # URLs de imágenes para cada slide del carrusel con descripciones editables
     media_urls = []
     
     # Slide 1: Verdura
@@ -43,7 +57,12 @@ def generate_weekly_offers_carousel():
         media_urls.append({
             "type": "image",
             "url": verdura.product.quality_photo_url,
-            "caption": f"🥬 {verdura.product.name}\n{verdura.price}\n{verdura.reference_price if verdura.reference_price else ''}"
+            "offer_type": "verdura",
+            "product_name": verdura.product.name,
+            "price": verdura.price or "",
+            "reference_price": verdura.reference_price or "",
+            "default_caption": f"🥬 {verdura.product.name}\n{verdura.price or ''}\n{verdura.reference_price if verdura.reference_price else ''}",
+            "caption": f"🥬 {verdura.product.name}\n{verdura.price or ''}\n{verdura.reference_price if verdura.reference_price else ''}"  # Editable
         })
     
     # Slide 2: Fruta
@@ -51,7 +70,12 @@ def generate_weekly_offers_carousel():
         media_urls.append({
             "type": "image",
             "url": fruta.product.quality_photo_url,
-            "caption": f"🍎 {fruta.product.name}\n{fruta.price}\n{fruta.reference_price if fruta.reference_price else ''}"
+            "offer_type": "fruta",
+            "product_name": fruta.product.name,
+            "price": fruta.price or "",
+            "reference_price": fruta.reference_price or "",
+            "default_caption": f"🍎 {fruta.product.name}\n{fruta.price or ''}\n{fruta.reference_price if fruta.reference_price else ''}",
+            "caption": f"🍎 {fruta.product.name}\n{fruta.price or ''}\n{fruta.reference_price if fruta.reference_price else ''}"  # Editable
         })
     
     # Slide 3: Especial
@@ -59,21 +83,24 @@ def generate_weekly_offers_carousel():
         media_urls.append({
             "type": "image",
             "url": especial.product.quality_photo_url,
-            "caption": f"⭐ {especial.product.name}\n{especial.price}\n{especial.reference_price if especial.reference_price else ''}"
+            "offer_type": "especial",
+            "product_name": especial.product.name,
+            "price": especial.price or "",
+            "reference_price": especial.reference_price or "",
+            "default_caption": f"⭐ {especial.product.name}\n{especial.price or ''}\n{especial.reference_price if especial.reference_price else ''}",
+            "caption": f"⭐ {especial.product.name}\n{especial.price or ''}\n{especial.reference_price if especial.reference_price else ''}"  # Editable
         })
     
     if not media_urls:
         return None
     
-    # Crear el contenido de Instagram
+    # Crear el contenido de Instagram con estructura editable
     content_data = {
-        "description": description,
+        "default_description": default_description,
+        "description": default_description,  # Editable
         "hashtags": hashtags,
-        "full_text": f"{description}\n\n{' '.join(hashtags)}"
+        "full_text": f"{default_description}\n\n{' '.join(hashtags)}"
     }
-    
-    # Programar para el próximo lunes a las 8:00 AM
-    next_monday = get_next_monday()
     
     content = InstagramContent(
         type="carousel",

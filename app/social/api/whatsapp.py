@@ -130,6 +130,23 @@ def reject_whatsapp_message(message_id):
     return jsonify(message.to_dict())
 
 
+@whatsapp_bp.patch("/whatsapp/message/<int:message_id>")
+@require_token
+def update_whatsapp_message(message_id):
+    """Actualiza el mensaje de WhatsApp (texto, etc.)"""
+    data = request.get_json(silent=True) or {}
+    message = WhatsAppMessage.query.get(message_id)
+    if not message:
+        return jsonify({"error": "Mensaje no encontrado"}), 404
+    
+    # Actualizar mensaje de texto si se proporciona
+    if "message_text" in data:
+        message.message_text = data["message_text"]
+    
+    db.session.commit()
+    return jsonify(message.to_dict())
+
+
 @whatsapp_bp.post("/whatsapp/send-test")
 @require_token
 def send_test_message():

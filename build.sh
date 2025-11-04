@@ -25,6 +25,7 @@ python migrate_add_users_and_vendors.py 2>/dev/null || echo "Migración ya aplic
 python migrate_add_vendor_system.py 2>/dev/null || echo "Migración ya aplicada o error menor"
 python migrate_add_weekly_offers.py 2>/dev/null || echo "Migración ya aplicada o error menor"
 python migrate_update_weekly_offers_product_id.py 2>/dev/null || echo "Migración ya aplicada o error menor"
+python migrate_add_weekly_offer_dates.py 2>/dev/null || echo "Migración ya aplicada o error menor"
 python migrate_add_social_tables.py 2>/dev/null || echo "Migración ya aplicada o error menor"
 
 echo "Creando usuario comerciante de prueba..."
