@@ -26,6 +26,8 @@ python migrate_add_vendor_system.py 2>/dev/null || echo "Migración ya aplicada 
 python migrate_add_weekly_offer_dates.py 2>/dev/null || echo "Migración ya aplicada o error menor"
 # Migración de social tables - solo crea tablas si no existen
 python migrate_add_social_tables.py 2>/dev/null || echo "Migración ya aplicada o error menor"
+# Migración de story tables - solo crea tablas si no existen
+python migrate_add_story_tables.py 2>/dev/null || echo "Migración ya aplicada o error menor"
 # NOTA: migrate_update_weekly_offers_product_id.py NO se ejecuta automáticamente
 # porque podría borrar datos. Solo ejecutar manualmente si es necesario.
 
