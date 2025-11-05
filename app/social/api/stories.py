@@ -18,11 +18,50 @@ from ..services.story_scheduler import StoryScheduler
 
 stories_bp = Blueprint('stories', __name__, url_prefix='/api/social/stories')
 
-# Inicializar generadores
-content_gen = StoryContentGenerator()
-image_gen = StoryImageGenerator()
-video_gen = StoryVideoGenerator()
-scheduler = StoryScheduler()
+# Inicializar generadores de forma lazy para evitar crashes si falta config
+content_gen = None
+image_gen = None
+video_gen = None
+scheduler = None
+
+def get_generators():
+    """Inicializa los generadores solo cuando se necesitan"""
+    global content_gen, image_gen, video_gen, scheduler
+    
+    if content_gen is None:
+        content_gen = StoryContentGenerator()
+    if image_gen is None:
+        image_gen = StoryImageGenerator()
+    if video_gen is None:
+        video_gen = StoryVideoGenerator()
+    if scheduler is None:
+        scheduler = StoryScheduler()
+    
+    return content_gen, image_gen, video_gen, scheduler
+
+
+@stories_bp.route('/health', methods=['GET'])
+def health_check():
+    """Verifica la configuración del sistema de historias"""
+    import os
+    
+    config_status = {
+        "openai_api_key": bool(os.getenv("OPENAI_API_KEY")),
+        "ffmpeg_available": False,
+        "ready": False
+    }
+    
+    # Verificar FFmpeg
+    try:
+        import subprocess
+        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+        config_status["ffmpeg_available"] = True
+    except:
+        pass
+    
+    config_status["ready"] = config_status["openai_api_key"]
+    
+    return jsonify(config_status), 200
 
 
 @stories_bp.route('/generate-batch', methods=['POST'])
@@ -39,6 +78,15 @@ def generate_batch():
         "force_regenerate": false  # Regenerar aunque ya existan (default: false)
     }
     """
+    # Verificar que OpenAI API Key esté configurada
+    import os
+    if not os.getenv("OPENAI_API_KEY"):
+        return jsonify({
+            "error": "OPENAI_API_KEY no configurada",
+            "message": "Debes configurar la variable de entorno OPENAI_API_KEY en Render para generar historias con IA.",
+            "instructions": "Ve a Render Dashboard → Tu servicio → Environment → Add: OPENAI_API_KEY"
+        }), 500
+    
     try:
         data = request.get_json() or {}
         
@@ -72,6 +120,9 @@ def generate_batch():
         print(f"   Semana objetivo: {target_week}")
         print(f"   Cantidad: {count}")
         print(f"   Temas: {themes or 'Aleatorios'}")
+        
+        # Obtener generadores
+        content_gen, image_gen, video_gen, _ = get_generators()
         
         # 1. Generar contenido con IA
         print(f"\n📝 Paso 1/3: Generando contenido...")
@@ -689,6 +740,9 @@ def run_scheduler_manual():
     }
     """
     try:
+        # Obtener scheduler
+        _, _, _, scheduler = get_generators()
+        
         data = request.get_json() or {}
         force = data.get('force', False)
         count = data.get('count')
@@ -727,6 +781,9 @@ def get_scheduler_status():
     - target_week: Semana a consultar (opcional)
     """
     try:
+        # Obtener scheduler
+        _, _, _, scheduler = get_generators()
+        
         target_week_str = request.args.get('target_week')
         
         if target_week_str:
